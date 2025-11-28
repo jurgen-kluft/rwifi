@@ -87,8 +87,8 @@ namespace ncore
         {
             if (state->node->remote_mode == 0)
             {
-                IPAddress_t remote_server_ip_address = IPAddress_t::from(state->ServerIP);
-                const u16 remote_port = state->ServerTcpPort;
+                IPAddress_t remote_server_ip_address(state->ServerIP);
+                const u16   remote_port = state->ServerTcpPort;
 
 #    ifdef TARGET_DEBUG
                 nserial::printf("Connecting to %d.%d.%d.%d:%d ...\n", va_t(remote_server_ip_address[0]), va_t(remote_server_ip_address[1]), va_t(remote_server_ip_address[2]), va_t(remote_server_ip_address[3]), va_t(remote_port));
@@ -101,12 +101,20 @@ namespace ncore
 
                     IPAddress_t localIP = ntcp::local_IP(state->tcp, state->node->tcp_client);
                     nserial::print("     IP: ");
-                    nserial::print(localIP);
+                    nserial::print(localIP[0], localIP[1], localIP[2], localIP[3]);
                     nserial::println("");
 
-                    nserial::print("     MAC: ");
-                    nserial::print(state->wifi->m_mac);
-                    nserial::println("");
+                    if (state->wifi->m_mac == nullptr)
+                    {
+                        nserial::println("     MAC: <unknown>");
+                    }
+                    else
+                    {
+                        nserial::print("     MAC: ");
+                        const u8* mac = state->wifi->m_mac;
+                        nserial::print(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                        nserial::println("");
+                    }
 #    endif
                     return ntask::RESULT_DONE;
                 }
@@ -244,8 +252,8 @@ namespace ncore
             }
             else
             {
-                IPAddress_t remote_server_ip = IPAddress_t::from(state->ServerIP);
-                const u16 remote_port = state->ServerUdpPort;
+                IPAddress_t remote_server_ip(state->ServerIP);
+                const u16   remote_port = state->ServerUdpPort;
                 nudp::send_to(state, 31337, data, size, remote_server_ip, remote_port);
             }
         }

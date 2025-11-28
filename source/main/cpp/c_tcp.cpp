@@ -37,8 +37,7 @@ namespace ncore
         {
             if (state->m_NumClients == 1)
                 return nullptr;
-            IPAddress ip(_ip.m_address);
-            if (state->m_WiFiClient.connect(ip, _port, timeout_ms) == 0)
+            if (state->m_WiFiClient.connect(_ip, _port, timeout_ms) == 0)
                 return nullptr;
             state->m_NumClients++;
             return &state->m_WiFiClient;
@@ -79,16 +78,14 @@ namespace ncore
 
         IPAddress_t remote_IP(state_tcp_t* state, client_t client)
         {
-            IPAddress ip = state->m_WiFiClient.remoteIP();
-            return IPAddress_t::from(ip[0], ip[1], ip[2], ip[3]);
+            return state->m_WiFiClient.remoteIP();
         }
 
         u16 remote_port(state_tcp_t* state, client_t client) { return state->m_WiFiClient.remotePort(); }
 
         IPAddress_t local_IP(state_tcp_t* state, client_t client)
         {
-            IPAddress ip = state->m_WiFiClient.localIP();
-            return IPAddress_t::from(ip[0], ip[1], ip[2], ip[3]);
+            return state->m_WiFiClient.localIP();
         }
 
         u16 local_port(state_tcp_t* state, client_t client) { return state->m_WiFiClient.localPort(); }
@@ -99,9 +96,8 @@ namespace ncore
         {
             if (state->m_NumClients == 1)
                 return nullptr;
-            IPAddress ip(_ip.m_address);
             state->m_WiFiClient.setTimeout(timeout_ms);
-            if (state->m_WiFiClient.connect(ip, _port) == 0)
+            if (state->m_WiFiClient.connect(_ip, _port) == 0)
                 return nullptr;
             state->m_NumClients++;
             return &state->m_WiFiClient;

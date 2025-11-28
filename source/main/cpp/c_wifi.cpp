@@ -28,6 +28,7 @@ namespace ncore
         {
             state->wifi           = &gWiFiState;
             state->wifi->m_status = nstatus::Disconnected;
+            g_memset(state->wifi->m_mac, 0, sizeof(state->wifi->m_mac));
 
             if (load_cache)
             {
@@ -57,26 +58,16 @@ namespace ncore
         void disconnect() { WiFi.disconnect(); }
         void disconnect_AP(bool wifioff) { WiFi.softAPdisconnect(wifioff); }
 
-        IPAddress_t get_IP(state_t* state)
-        {
-            IPAddress   ip = WiFi.localIP();
-            return IPAddress_t::from(ip[0], ip[1], ip[2], ip[3]);
-        }
+        IPAddress_t get_IP(state_t* state) { return WiFi.localIP(); }
 
-        MACAddress_t get_MAC(state_t* state)
+        const u8* get_MAC(state_t* state)
         {
-            MACAddress_t mac;
-            WiFi.macAddress(mac.m_address);
-            return mac;
+            WiFi.macAddress(state->MACAddress);
+            return state->MACAddress;
         }
 
         s32 get_RSSI(state_t* state) { return WiFi.RSSI(); }
-
-        void set_DNS(const IPAddress_t& dns)
-        {
-            IPAddress ip(dns.m_address);
-            WiFi.setDNS(ip);
-        }
+        void set_DNS(const IPAddress_t& dns) { WiFi.setDNS(dns); }
 
         // TODO Should we add compile time verification of the nencryption::type_t
         // matching the values from the WiFi library?
@@ -122,7 +113,7 @@ namespace ncore
                 {
                     state->wifi->m_status = nstatus::Connected;
 
-                    WiFi.macAddress(state->wifi->m_mac.m_address);
+                    WiFi.macAddress(state->wifi->m_mac);
 
                     nwifi::cache_t& cache = state->wifi->m_cache;
                     cache.ip_address      = WiFi.localIP();
@@ -175,8 +166,8 @@ namespace ncore
             ncore::nserial::print(" SSID: ");
             ncore::nserial::println(state->WiFiSSID);
             ncore::nserial::print(" MAC Address: ");
-            MACAddress_t mac = state->wifi->m_mac;
-            ncore::nserial::print(mac);
+            const u8* mac = state->wifi->m_mac;
+            ncore::nserial::print(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
             ncore::nserial::println("");
             IPAddress ip = WiFi.localIP();
             ncore::nserial::printf("  IP Address: %d.%d.%d.%d\n", va_t(ip[0]), va_t(ip[1]), va_t(ip[2]), va_t(ip[3]));

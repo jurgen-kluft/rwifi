@@ -58,7 +58,7 @@ namespace ncore
 
     struct state_wifi_t
     {
-        MACAddress_t    m_mac;
+        u8   m_mac[6];
         nwifi::status_t m_status;
         nwifi::cache_t  m_cache;
     };

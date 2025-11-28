@@ -93,7 +93,6 @@ namespace ncore
         {
             for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
             {
-                m_socks[i].m_fd    = -1;
                 m_socks[i].m_port  = 0xFFFF;
                 m_socks[i].m_flags = 0;
             }
@@ -139,7 +138,10 @@ namespace ncore
 
         bool open(state_t *state, u16 port)
         {
-            nudp::udp_sock_t *sock = state->udp->new_sock(port);
+            nudp::udp_sock_t *sock = state->udp->find_sock(port);
+            if (sock != nullptr)
+                return true;
+            sock = state->udp->new_sock(port);
             if (sock == nullptr)
             {
                 // No available socket
@@ -292,12 +294,15 @@ namespace ncore
             if (si_other_storage.ss_family == AF_INET)
             {
                 struct sockaddr_in &si_other = (sockaddr_in &)si_other_storage;
-                remote_ip = IPAddress_t::from(si_other.sin_addr.s_addr);
+                remote_ip = IPAddress_t(si_other.sin_addr.s_addr);
                 remote_port = ntohs(si_other.sin_port);
             }
             else
             {
-                remote_ip = IPAddress_t::from((u32)ip_addr_any.u_addr.ip4.addr);
+                if (ip_addr_any.type  == ESP_IPADDR_TYPE_V4)
+                {
+                    remote_ip = IPAddress_t(ip_addr_any.u_addr.ip4.addr);
+                }
                 remote_port = 0;
             }
             return len;
@@ -312,8 +317,7 @@ namespace ncore
             byte const *tx_buffer     = data;
             u32 const   tx_buffer_len = data_size;
 
-            IPAddress remote_ip(to_address.m_address);
-
+            IPAddress remote_ip = to_address;
             struct sockaddr_in recipient;
             recipient.sin_addr.s_addr = (uint32_t)remote_ip;
             recipient.sin_family      = AF_INET;
@@ -339,18 +343,14 @@ namespace ncore
 
         bool open(state_t *state, u16 port)
         {
-            udp_sock_t *&sock = state->udp->sock;
-
+            udp_sock_t *sock = state->udp->find_sock(port);
+            if (sock != nullptr)
+                return true;
+            sock = state->udp->new_sock(port);
             if (sock == nullptr)
             {
-                sock = &gUdpSock;
-            }
-            else
-            {
-                // If already opened with same port, do nothing
-                if (sock->m_port == port)
-                    return true;
-                close(state);
+                // No available socket
+                return false;
             }
 
             if (sock->m_udp.begin(port) == 0)
@@ -362,10 +362,9 @@ namespace ncore
             return true;
         }
 
-        void close(state_t *state)
+        void close(state_t *state, u16 port)
         {
-            udp_sock_t *&sock = state->udp->sock;
-
+            udp_sock_t *sock = state->udp->find_sock(port);
             if (sock != nullptr && sock->m_port != 0xFFFF)
             {
                 sock->m_udp.stop();
@@ -393,8 +392,7 @@ namespace ncore
 
             sock->m_udp.read(rxdata, len);
 
-            IPAddress remoteIP = sock->m_udp.remoteIP();
-            remote_ip = IPAddress_t::from(remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3]);
+            remote_ip = sock->m_udp.remoteIP();
             remote_port = sock->m_udp.remotePort();
 
             return len;
@@ -406,8 +404,7 @@ namespace ncore
             if (sock == nullptr || sock->m_port == 0xFFFF)
                 return 0;
 
-            IPAddress remote_ip(to_address.m_address);
-            sock->m_udp.beginPacket(remote_ip, to_port);
+            sock->m_udp.beginPacket(to_address, to_port);
             sock->m_udp.write(data, data_size);
             sock->m_udp.endPacket();
 
