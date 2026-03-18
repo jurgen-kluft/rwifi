@@ -1,13 +1,13 @@
-#ifndef __RDNO_CORE_WIFI_H__
-#define __RDNO_CORE_WIFI_H__
-#include "rdno_core/c_target.h"
+#ifndef __ARDUINO_CORE_WIFI_H__
+#define __ARDUINO_CORE_WIFI_H__
+#include "rcore/c_target.h"
 #ifdef USE_PRAGMA_ONCE
 #    pragma once
 #endif
 
-#include "rdno_core/c_state.h"
-#include "rdno_core/c_network.h"
-#include "rdno_wifi/c_definitions.h"
+#include "rcore/c_state.h"
+#include "rcore/c_network.h"
+#include "rwifi/c_definitions.h"
 
 namespace ncore
 {
@@ -28,4 +28,4 @@ namespace ncore
     }  // namespace nwifi
 }  // namespace ncore
 
-#endif  // __RDNO_CORE_WIFI_H__
+#endif  // __ARDUINO_CORE_WIFI_H__

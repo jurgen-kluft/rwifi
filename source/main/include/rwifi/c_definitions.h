@@ -1,11 +1,11 @@
-#ifndef __RDNO_CORE_WIFI_DEFINITIONS_H__
-#define __RDNO_CORE_WIFI_DEFINITIONS_H__
-#include "rdno_core/c_target.h"
+#ifndef __ARDUINO_CORE_WIFI_DEFINITIONS_H__
+#define __ARDUINO_CORE_WIFI_DEFINITIONS_H__
+#include "rcore/c_target.h"
 #ifdef USE_PRAGMA_ONCE
 #    pragma once
 #endif
 
-#include "rdno_core/c_network.h"
+#include "rcore/c_network.h"
 
 namespace ncore
 {
@@ -58,10 +58,9 @@ namespace ncore
 
     struct state_wifi_t
     {
-        u8   m_mac[6];
         nwifi::status_t m_status;
         nwifi::cache_t  m_cache;
     };
 }  // namespace ncore
 
-#endif  // __RDNO_CORE_WIFI_DEFINITIONS_H__
+#endif  // __ARDUINO_CORE_WIFI_DEFINITIONS_H__

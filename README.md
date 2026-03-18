@@ -1,4 +1,4 @@
-# rdno_wifi
+# rwifi
 
 This library provides a 'node' for connecting to a WiFi network and Remote Server. It simplifies the process of connecting to a WiFi network by handling the connection logic and providing a simple interface for users.
 

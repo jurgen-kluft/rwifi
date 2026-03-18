@@ -1,24 +1,19 @@
 #ifdef TARGET_ARDUINO
 
-#    include "Arduino.h"
+#    include "rcore/c_app.h"
+#    include "rcore/c_packet.h"
+#    include "rcore/c_network.h"
+#    include "rcore/c_eeprom.h"
+#    include "rcore/c_log.h"
+#    include "rcore/c_state.h"
+#    include "rcore/c_str.h"
+#    include "rcore/c_task.h"
+#    include "rcore/c_timer.h"
 
-#    include "rdno_wifi/c_ethernet.h"
-#    include "WiFi.h"
-
-#    include "rdno_core/c_app.h"
-#    include "rdno_core/c_packet.h"
-#    include "rdno_core/c_network.h"
-#    include "rdno_core/c_eeprom.h"
-#    include "rdno_core/c_serial.h"
-#    include "rdno_core/c_state.h"
-#    include "rdno_core/c_str.h"
-#    include "rdno_core/c_task.h"
-#    include "rdno_core/c_timer.h"
-
-#    include "rdno_wifi/c_tcp.h"
-#    include "rdno_wifi/c_udp.h"
-#    include "rdno_wifi/c_wifi.h"
-#    include "rdno_wifi/c_node.h"
+#    include "rwifi/c_tcp.h"
+#    include "rwifi/c_udp.h"
+#    include "rwifi/c_wifi.h"
+#    include "rwifi/c_node.h"
 
 namespace ncore
 {
@@ -66,17 +61,17 @@ namespace ncore
 
             if (nwifi::connected(state) == false)
             {
-                nserial::println("  -> Connecting to remote stopped, WiFi not connected.");
+                nlog::println("  -> Connecting to remote stopped, WiFi not connected.");
                 return ntask::RESULT_ERROR;
             }
 
             if (state->node->remote_mode == 0)
             {
-                nserial::println("Connecting to remote tcp server...");
+                nlog::println("Connecting to remote tcp server...");
             }
             else
             {
-                nserial::println("Connecting to remote udp server...");
+                nlog::println("Connecting to remote udp server...");
                 nudp::open(state, 31337);  // Open UDP socket on port 31337
             }
 
@@ -87,34 +82,27 @@ namespace ncore
         {
             if (state->node->remote_mode == 0)
             {
-                IPAddress_t remote_server_ip_address(state->ServerIP);
-                const u16   remote_port = state->ServerTcpPort;
+                IPAddress_t remote_server_ip_address = IPAddress_t::from(state->ServerIP);
+                const u16   remote_port              = state->ServerTcpPort;
 
 #    ifdef TARGET_DEBUG
-                nserial::printf("Connecting to %d.%d.%d.%d:%d ...\n", va_t(remote_server_ip_address[0]), va_t(remote_server_ip_address[1]), va_t(remote_server_ip_address[2]), va_t(remote_server_ip_address[3]), va_t(remote_port));
+                STR_T(ipStr, 32, "");
+                remote_server_ip_address.to_string(ipStr);
+                nlog::printfln("Connecting to %s ...", va_t(ipStr.m_const), va_t(remote_port));
 #    endif
                 state->node->tcp_client = ntcp::connect(state->tcp, remote_server_ip_address, remote_port, 8000);
                 if (ntcp::connected(state->tcp, state->node->tcp_client))
                 {
 #    ifdef TARGET_DEBUG
-                    nserial::println("  -> Connected to remote.");
+                    nlog::println("  -> Connected to remote.");
 
                     IPAddress_t localIP = ntcp::local_IP(state->tcp, state->node->tcp_client);
-                    nserial::print("     IP: ");
-                    nserial::print(localIP[0], localIP[1], localIP[2], localIP[3]);
-                    nserial::println("");
+                    nlog::print("     IP: ");
+                    localIP.to_string(ipStr);
+                    nlog::println(ipStr.m_const);
 
-                    if (state->wifi->m_mac == nullptr)
-                    {
-                        nserial::println("     MAC: <unknown>");
-                    }
-                    else
-                    {
-                        nserial::print("     MAC: ");
-                        const u8* mac = state->wifi->m_mac;
-                        nserial::print(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-                        nserial::println("");
-                    }
+                    nlog::print("     MAC: ");
+                    nlog::println_mac(state->MACAddress);
 #    endif
                     return ntask::RESULT_DONE;
                 }
@@ -252,9 +240,9 @@ namespace ncore
             }
             else
             {
-                IPAddress_t remote_server_ip(state->ServerIP);
-                const u16   remote_port = state->ServerUdpPort;
-                nudp::send_to(state, 31337, data, size, remote_server_ip, remote_port);
+                IPAddress_t remote_server_ip = IPAddress_t::from(state->ServerIP);
+                const u16   remote_port      = state->ServerUdpPort;
+                nudp::send_to(state, remote_port, data, size, remote_server_ip, remote_port);
             }
         }
 
@@ -263,7 +251,7 @@ namespace ncore
 
 #else
 
-#    include "rdno_wifi/c_node.h"
+#    include "rwifi/c_node.h"
 
 namespace ncore
 {

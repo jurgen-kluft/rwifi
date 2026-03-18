@@ -1,12 +1,13 @@
-#include "rdno_core/c_str.h"
-#include "rdno_core/c_state.h"
-#include "rdno_wifi/c_udp.h"
+#include "rcore/c_log.h"
+#include "rcore/c_str.h"
+#include "rcore/c_state.h"
+#include "rwifi/c_udp.h"
 
 #ifdef TARGET_ARDUINO
 
 #    include "Arduino.h"
 
-#    include "rdno_wifi/c_ethernet.h"
+//#    include "rwifi/c_ethernet.h"
 #    include "WiFi.h"
 
 #    ifdef TARGET_ESP8266
@@ -151,7 +152,7 @@ namespace ncore
             IPAddress address(IPv4);
             if ((sock->m_fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
             {
-                log_e("could not create socket: %d", errno);
+                nlog::printfln("could not create socket: %d", va_t(errno));
                 sock->m_port = 0xFFFF;
                 return false;
             }
@@ -160,7 +161,7 @@ namespace ncore
             int yes = 1;
             if (setsockopt(sock->m_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
             {
-                log_e("could not set socket option: %d", errno);
+                nlog::printfln("could not set socket option: %d", va_t(errno));
                 close(state, port);
                 return false;
             }
@@ -178,7 +179,7 @@ namespace ncore
 
             if (bind(sock->m_fd, (sockaddr *)&serveraddr, sock_size) == -1)
             {
-                log_e("could not bind socket: %d", errno);
+                nlog::printfln("could not bind socket: %d", va_t(errno));
                 close(state, port);
                 return false;
             }
@@ -201,7 +202,7 @@ namespace ncore
             IPAddress address(IPv4);
             if ((sock->m_fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
             {
-                log_e("could not create socket: %d", errno);
+                nlog::printfln("could not create socket: %d", va_t(errno));
                 sock->m_port = 0xFFFF;
                 return false;
             }
@@ -210,7 +211,7 @@ namespace ncore
             int yes = 1;
             if (setsockopt(sock->m_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
             {
-                log_e("could not set socket option: %d", errno);
+                nlog::printfln("could not set socket option: %d", va_t(errno));
                 close(state, port);
                 return false;
             }
@@ -218,7 +219,7 @@ namespace ncore
             // Enable broadcast
             if (setsockopt(sock->m_fd, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes)) < 0)
             {
-                log_e("could not set broadcast option: %d", errno);
+                nlog::printfln("could not set broadcast option: %d", va_t(errno));
                 close(state, port);
                 return false;
             }
@@ -236,7 +237,7 @@ namespace ncore
 
             if (bind(sock->m_fd, (sockaddr *)&serveraddr, sock_size) == -1)
             {
-                log_e("could not bind socket: %d", errno);
+                nlog::printfln("could not bind socket: %d", va_t(errno));
                 close(state, port);
                 return false;
             }
@@ -275,7 +276,7 @@ namespace ncore
             int                     len  = 0;
             if (ioctl(sock->m_fd, FIONREAD, &len) == -1)
             {
-                log_e("could not check for data in buffer length: %d", errno);
+                nlog::printfln("could not check for data in buffer length: %d", va_t(errno));
                 return 0;
             }
             if (!len)
@@ -288,20 +289,22 @@ namespace ncore
                 {
                     return 0;
                 }
-                log_e("could not receive data: %d", errno);
+                nlog::printfln("could not receive data: %d", va_t(errno));
                 return 0;
             }
             if (si_other_storage.ss_family == AF_INET)
             {
                 struct sockaddr_in &si_other = (sockaddr_in &)si_other_storage;
-                remote_ip = IPAddress_t(si_other.sin_addr.s_addr);
+                IPAddress ip = IPAddress(si_other.sin_addr.s_addr);
+                IPAddress_t::from_arduino(remote_ip, ip);
                 remote_port = ntohs(si_other.sin_port);
             }
             else
             {
                 if (ip_addr_any.type  == ESP_IPADDR_TYPE_V4)
                 {
-                    remote_ip = IPAddress_t(ip_addr_any.u_addr.ip4.addr);
+                    IPAddress ip = IPAddress(ip_addr_any.u_addr.ip4.addr);
+                    IPAddress_t::from_arduino(remote_ip, ip);
                 }
                 remote_port = 0;
             }
@@ -317,7 +320,9 @@ namespace ncore
             byte const *tx_buffer     = data;
             u32 const   tx_buffer_len = data_size;
 
-            IPAddress remote_ip = to_address;
+            IPAddress remote_ip;
+            IPAddress_t::to_arduino(remote_ip, to_address);
+
             struct sockaddr_in recipient;
             recipient.sin_addr.s_addr = (uint32_t)remote_ip;
             recipient.sin_family      = AF_INET;
@@ -326,7 +331,7 @@ namespace ncore
             if (sent > 0)
                 return sent;
 
-            log_e("could not send data: %d", errno);
+            nlog::printfln("could not send data: %d", va_t(errno));
             return 0;
         }
 #    endif
@@ -355,7 +360,7 @@ namespace ncore
 
             if (sock->m_udp.begin(port) == 0)
             {
-                DEBUGV("could not open UDP socket");
+                nlog::println("could not open UDP socket");
                 return false;
             }
             sock->m_port = port;
@@ -392,7 +397,7 @@ namespace ncore
 
             sock->m_udp.read(rxdata, len);
 
-            remote_ip = sock->m_udp.remoteIP();
+            IPAddress_t::from_arduino(remote_ip, sock->m_udp.remoteIP());
             remote_port = sock->m_udp.remotePort();
 
             return len;
@@ -404,7 +409,10 @@ namespace ncore
             if (sock == nullptr || sock->m_port == 0xFFFF)
                 return 0;
 
-            sock->m_udp.beginPacket(to_address, to_port);
+            IPAddress arduino_ip;
+            IPAddress_t::to_arduino(arduino_ip, to_address);
+
+            sock->m_udp.beginPacket(arduino_ip, to_port);
             sock->m_udp.write(data, data_size);
             sock->m_udp.endPacket();
 

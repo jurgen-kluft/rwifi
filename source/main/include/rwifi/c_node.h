@@ -1,6 +1,6 @@
-#ifndef __RDNO_CORE_NODE_H__
-#define __RDNO_CORE_NODE_H__
-#include "rdno_core/c_target.h"
+#ifndef __ARDUINO_CORE_NODE_H__
+#define __ARDUINO_CORE_NODE_H__
+#include "rcore/c_target.h"
 #ifdef USE_PRAGMA_ONCE
 #    pragma once
 #endif
@@ -18,4 +18,4 @@ namespace ncore
     }  // namespace nnode
 }  // namespace ncore
 
-#endif  // __RDNO_CORE_NODE_H__
+#endif  // __ARDUINO_CORE_NODE_H__

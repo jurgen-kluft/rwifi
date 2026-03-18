@@ -1,11 +1,11 @@
-#ifndef __RDNO_CORE_WIFI_UDP_H__
-#define __RDNO_CORE_WIFI_UDP_H__
-#include "rdno_core/c_target.h"
+#ifndef __ARDUINO_CORE_WIFI_UDP_H__
+#define __ARDUINO_CORE_WIFI_UDP_H__
+#include "rcore/c_target.h"
 #ifdef USE_PRAGMA_ONCE
 #    pragma once
 #endif
 
-#include "rdno_wifi/c_definitions.h"
+#include "rwifi/c_definitions.h"
 
 namespace ncore
 {
@@ -25,4 +25,4 @@ namespace ncore
     }  // namespace nudp
 }  // namespace ncore
 
-#endif  // __RDNO_CORE_WIFI_UDP_H__
+#endif  // __ARDUINO_CORE_WIFI_UDP_H__

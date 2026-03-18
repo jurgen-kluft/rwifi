@@ -2,18 +2,18 @@
 
 #    include "Arduino.h"
 
-#    include "rdno_wifi/c_ethernet.h"
+//#    include "rwifi/c_ethernet.h"
 #    include "WiFi.h"
 
 #    ifdef TARGET_ESP8266
 #        include "ESP8266WiFi.h"
 #    endif
 
-#    include "rdno_wifi/c_wifi.h"
-#    include "rdno_core/c_eeprom.h"
-#    include "rdno_core/c_network.h"
-#    include "rdno_core/c_serial.h"
-#    include "rdno_core/c_str.h"
+#    include "rwifi/c_wifi.h"
+#    include "rcore/c_eeprom.h"
+#    include "rcore/c_network.h"
+#    include "rcore/c_log.h"
+#    include "rcore/c_str.h"
 #    include "ccore/c_memory.h"
 
 namespace ncore
@@ -28,23 +28,22 @@ namespace ncore
         {
             state->wifi           = &gWiFiState;
             state->wifi->m_status = nstatus::Disconnected;
-            g_memset(state->wifi->m_mac, 0, sizeof(state->wifi->m_mac));
 
             if (load_cache)
             {
-                ncore::nserial::println("loading WiFi cache from EEPROM");
+                ncore::nlog::println("loading WiFi cache from EEPROM");
                 ncore::neeprom::load((byte*)&state->wifi->m_cache, sizeof(ncore::nwifi::cache_t));
                 {
                     const u32 crc              = state->wifi->m_cache.m_crc;
                     state->wifi->m_cache.m_crc = 0;
                     if (crc != neeprom::crc32((const byte*)&state->wifi->m_cache, sizeof(nwifi::cache_t)))
                     {
-                        ncore::nserial::println(" WiFi cache in EEPROM is corrupted (CRC mismatch)");
+                        ncore::nlog::println(" WiFi cache in EEPROM is corrupted (CRC mismatch)");
                         state->wifi->m_cache.reset();
                     }
                     else
                     {
-                        ncore::nserial::println("WiFi cache loaded from EEPROM");
+                        ncore::nlog::println("WiFi cache loaded from EEPROM");
                         state->wifi->m_cache.m_crc = crc;
                     }
                 }
@@ -58,7 +57,12 @@ namespace ncore
         void disconnect() { WiFi.disconnect(); }
         void disconnect_AP(bool wifioff) { WiFi.softAPdisconnect(wifioff); }
 
-        IPAddress_t get_IP(state_t* state) { return WiFi.localIP(); }
+        IPAddress_t get_IP(state_t* state) 
+        { 
+            IPAddress_t ip;
+            IPAddress_t::from_arduino(ip, WiFi.localIP());
+            return ip;
+        }
 
         const u8* get_MAC(state_t* state)
         {
@@ -67,7 +71,12 @@ namespace ncore
         }
 
         s32 get_RSSI(state_t* state) { return WiFi.RSSI(); }
-        void set_DNS(const IPAddress_t& dns) { WiFi.setDNS(dns); }
+        void set_DNS(const IPAddress_t& dns) 
+        { 
+            IPAddress arduino_dns;
+            IPAddress_t::to_arduino(arduino_dns, dns);
+            WiFi.setDNS(arduino_dns);
+        }
 
         // TODO Should we add compile time verification of the nencryption::type_t
         // matching the values from the WiFi library?
@@ -95,12 +104,12 @@ namespace ncore
 
             if (state->wifi->m_cache.ip_address == 0 || force_normal_mode)
             {
-                nserial::printf("Connect (normal) to WiFi with SSID %s ...\n", va_t(state->WiFiSSID));
+                nlog::printfln("Connect (normal) to WiFi with SSID %s ...", va_t(state->WiFiSSID));
                 fast_connect_normal(state->WiFiSSID, state->WiFiPassword);
             }
             else
             {
-                nserial::printf("Connect (fast) to WiFi with SSID %s ...\n", va_t(state->WiFiSSID));
+                nlog::printfln("Connect (fast) to WiFi with SSID %s ...", va_t(state->WiFiSSID));
                 fast_connect_fast(state->WiFiSSID, state->WiFiPassword, state->wifi->m_cache);
             }
         }
@@ -113,7 +122,7 @@ namespace ncore
                 {
                     state->wifi->m_status = nstatus::Connected;
 
-                    WiFi.macAddress(state->wifi->m_mac);
+                    WiFi.macAddress(state->MACAddress);
 
                     nwifi::cache_t& cache = state->wifi->m_cache;
                     cache.ip_address      = WiFi.localIP();
@@ -141,37 +150,34 @@ namespace ncore
 
         void print_connection_info(state_t* state)
         {
-            ncore::nserial::println("WiFi Connection Info:");
+            ncore::nlog::println("WiFi Connection Info:");
 
 #    ifdef TARGET_ESP8266
             // Print PhyMode
             if (WiFi.getPhyMode() == WIFI_PHY_MODE_11B)
             {
-                ncore::nserial::println(" PhyMode: 802.11b");
+                ncore::nlog::println(" PhyMode: 802.11b");
             }
             else if (WiFi.getPhyMode() == WIFI_PHY_MODE_11G)
             {
-                ncore::nserial::println(" PhyMode: 802.11g");
+                ncore::nlog::println(" PhyMode: 802.11g");
             }
             else if (WiFi.getPhyMode() == WIFI_PHY_MODE_11N)
             {
-                ncore::nserial::println(" PhyMode: 802.11n");
+                ncore::nlog::println(" PhyMode: 802.11n");
             }
             else
             {
-                ncore::nserial::println(" PhyMode: Unknown");
+                ncore::nlog::println(" PhyMode: Unknown");
             }
 #    endif
 
-            ncore::nserial::print(" SSID: ");
-            ncore::nserial::println(state->WiFiSSID);
-            ncore::nserial::print(" MAC Address: ");
-            const u8* mac = state->wifi->m_mac;
-            ncore::nserial::print(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-            ncore::nserial::println("");
+            ncore::nlog::printvln("  SSID: ", state->WiFiSSID);
+            ncore::nlog::print("  MAC Address: ");
+            ncore::nlog::println_mac(state->MACAddress);
             IPAddress ip = WiFi.localIP();
-            ncore::nserial::printf("  IP Address: %d.%d.%d.%d\n", va_t(ip[0]), va_t(ip[1]), va_t(ip[2]), va_t(ip[3]));
-            ncore::nserial::printf(" RSSI: %d dBm\n", va_t(WiFi.RSSI()));
+            ncore::nlog::printfln("  IP Address: %d.%d.%d.%d", va_t(ip[0]), va_t(ip[1]), va_t(ip[2]), va_t(ip[3]));
+            ncore::nlog::printfln("  RSSI: %d dBm", va_t(WiFi.RSSI()));
         }
 
     }  // namespace nwifi
@@ -179,7 +185,7 @@ namespace ncore
 
 #else
 
-#    include "rdno_wifi/c_wifi.h"
+#    include "rwifi/c_wifi.h"
 
 namespace ncore
 {

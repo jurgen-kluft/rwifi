@@ -1,14 +1,15 @@
-#include "rdno_core/c_state.h"
-#include "rdno_core/c_str.h"
-#include "rdno_core/c_malloc.h"
-#include "rdno_wifi/c_tcp.h"
+#include "rcore/c_ipaddress.h"
+#include "rcore/c_state.h"
+#include "rcore/c_str.h"
+#include "rcore/c_malloc.h"
+#include "rwifi/c_tcp.h"
 #include "ccore/c_memory.h"
 
 #ifdef TARGET_ARDUINO
 
 #    include "Arduino.h"
 
-#    include "rdno_wifi/c_ethernet.h"
+//#    include "rwifi/c_ethernet.h"
 #    include "WiFi.h"
 
 #    include "WiFiServer.h"
@@ -33,11 +34,13 @@ namespace ncore
         }
 
 #    ifdef TARGET_ESP32
-        client_t connect(state_tcp_t* state, IPAddress_t _ip, u16 _port, s32 timeout_ms)
+        client_t connect(state_tcp_t* state, IPAddress_t const& _ip, u16 _port, s32 timeout_ms)
         {
             if (state->m_NumClients == 1)
                 return nullptr;
-            if (state->m_WiFiClient.connect(_ip, _port, timeout_ms) == 0)
+            IPAddress ip;
+            IPAddress_t::to_arduino(ip, _ip);
+            if (state->m_WiFiClient.connect(ip, _port, timeout_ms) == 0)
                 return nullptr;
             state->m_NumClients++;
             return &state->m_WiFiClient;
@@ -78,26 +81,35 @@ namespace ncore
 
         IPAddress_t remote_IP(state_tcp_t* state, client_t client)
         {
-            return state->m_WiFiClient.remoteIP();
+            IPAddress   ip = state->m_WiFiClient.remoteIP();
+            IPAddress_t ret;
+            IPAddress_t::from_arduino(ret, ip);
+            return ret;
         }
 
         u16 remote_port(state_tcp_t* state, client_t client) { return state->m_WiFiClient.remotePort(); }
 
         IPAddress_t local_IP(state_tcp_t* state, client_t client)
         {
-            return state->m_WiFiClient.localIP();
+            IPAddress   ip = state->m_WiFiClient.localIP();
+            IPAddress_t ret;
+            IPAddress_t::from_arduino(ret, ip);
+            return ret;
         }
 
         u16 local_port(state_tcp_t* state, client_t client) { return state->m_WiFiClient.localPort(); }
 
 #    ifdef TARGET_ESP8266
 
-        client_t connect(state_tcp_t* state, IPAddress_t _ip, u16 _port, s32 timeout_ms)
+        client_t connect(state_tcp_t* state, IPAddress_t const& _ip, u16 _port, s32 timeout_ms)
         {
             if (state->m_NumClients == 1)
                 return nullptr;
             state->m_WiFiClient.setTimeout(timeout_ms);
-            if (state->m_WiFiClient.connect(_ip, _port) == 0)
+
+            IPAddress ip;
+            IPAddress_t::to_arduino(ip, _ip);
+            if (state->m_WiFiClient.connect(ip, _port) == 0)
                 return nullptr;
             state->m_NumClients++;
             return &state->m_WiFiClient;
