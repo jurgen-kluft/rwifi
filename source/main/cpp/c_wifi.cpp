@@ -26,31 +26,31 @@ namespace ncore
 
         void init_state(state_t* state, bool load_cache)
         {
-            state->wifi           = &gWiFiState;
-            state->wifi->m_status = nstatus::Disconnected;
+            state->WiFi           = &gWiFiState;
+            state->WiFi->m_status = nstatus::Disconnected;
 
             if (load_cache)
             {
                 ncore::nlog::println("loading WiFi cache from EEPROM");
-                ncore::neeprom::load((byte*)&state->wifi->m_cache, sizeof(ncore::nwifi::cache_t));
+                ncore::neeprom::load((byte*)&state->WiFi->m_cache, sizeof(ncore::nwifi::cache_t));
                 {
-                    const u32 crc              = state->wifi->m_cache.m_crc;
-                    state->wifi->m_cache.m_crc = 0;
-                    if (crc != neeprom::crc32((const byte*)&state->wifi->m_cache, sizeof(nwifi::cache_t)))
+                    const u32 crc              = state->WiFi->m_cache.m_crc;
+                    state->WiFi->m_cache.m_crc = 0;
+                    if (crc != neeprom::crc32((const byte*)&state->WiFi->m_cache, sizeof(nwifi::cache_t)))
                     {
                         ncore::nlog::println(" WiFi cache in EEPROM is corrupted (CRC mismatch)");
-                        state->wifi->m_cache.reset();
+                        state->WiFi->m_cache.reset();
                     }
                     else
                     {
                         ncore::nlog::println("WiFi cache loaded from EEPROM");
-                        state->wifi->m_cache.m_crc = crc;
+                        state->WiFi->m_cache.m_crc = crc;
                     }
                 }
             }
             else
             {
-                state->wifi->m_cache.reset();
+                state->WiFi->m_cache.reset();
             }
         }
 
@@ -102,7 +102,7 @@ namespace ncore
             WiFi.persistent(true);
             WiFi.mode(WIFI_STA);
 
-            if (state->wifi->m_cache.ip_address == 0 || force_normal_mode)
+            if (state->WiFi->m_cache.ip_address == 0 || force_normal_mode)
             {
                 nlog::printfln("Connect (normal) to WiFi with SSID %s ...", va_t(state->WiFiSSID));
                 fast_connect_normal(state->WiFiSSID, state->WiFiPassword);
@@ -110,7 +110,7 @@ namespace ncore
             else
             {
                 nlog::printfln("Connect (fast) to WiFi with SSID %s ...", va_t(state->WiFiSSID));
-                fast_connect_fast(state->WiFiSSID, state->WiFiPassword, state->wifi->m_cache);
+                fast_connect_fast(state->WiFiSSID, state->WiFiPassword, state->WiFi->m_cache);
             }
         }
 
@@ -118,13 +118,13 @@ namespace ncore
         {
             if (WiFi.status() == WL_CONNECTED)
             {
-                if (state->wifi->m_status != nstatus::Connected)
+                if (state->WiFi->m_status != nstatus::Connected)
                 {
-                    state->wifi->m_status = nstatus::Connected;
+                    state->WiFi->m_status = nstatus::Connected;
 
                     WiFi.macAddress(state->MACAddress);
 
-                    nwifi::cache_t& cache = state->wifi->m_cache;
+                    nwifi::cache_t& cache = state->WiFi->m_cache;
                     cache.ip_address      = WiFi.localIP();
                     cache.ip_gateway      = WiFi.gatewayIP();
                     cache.ip_mask         = WiFi.subnetMask();
@@ -138,14 +138,14 @@ namespace ncore
                 }
                 return true;
             }
-            state->wifi->m_status = nstatus::Disconnected;
+            state->WiFi->m_status = nstatus::Disconnected;
             return false;
         }
 
         void disconnect(state_t* state)
         {
             WiFi.disconnect();
-            state->wifi->m_status = nstatus::Disconnected;
+            state->WiFi->m_status = nstatus::Disconnected;
         }
 
         void print_connection_info(state_t* state)

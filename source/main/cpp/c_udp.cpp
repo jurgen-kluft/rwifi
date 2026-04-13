@@ -134,15 +134,15 @@ namespace ncore
         void init_state(state_t *state)
         {
             gUdpState.init();
-            state->udp = &gUdpState;
+            state->Udp = &gUdpState;
         }
 
         bool open(state_t *state, u16 port)
         {
-            nudp::udp_sock_t *sock = state->udp->find_sock(port);
+            nudp::udp_sock_t *sock = state->Udp->find_sock(port);
             if (sock != nullptr)
                 return true;
-            sock = state->udp->new_sock(port);
+            sock = state->Udp->new_sock(port);
             if (sock == nullptr)
             {
                 // No available socket
@@ -192,7 +192,7 @@ namespace ncore
 
         bool open_broadcast(state_t *state, u16 port)
         {
-            nudp::udp_sock_t *sock = state->udp->new_sock(port);
+            nudp::udp_sock_t *sock = state->Udp->new_sock(port);
             if (sock == nullptr)
             {
                 // No available socket
@@ -250,7 +250,7 @@ namespace ncore
 
         void close(state_t *state, u16 port)
         {
-            nudp::udp_sock_t *sock = state->udp->find_sock(port);
+            nudp::udp_sock_t *sock = state->Udp->find_sock(port);
             if (sock != nullptr && sock->m_port == port)
             {
                 ::close(sock->m_fd);
@@ -265,7 +265,7 @@ namespace ncore
 
         s32 recv_from(state_t *state, u16 port, byte *rxdata, s32 max_rxdatasize, IPAddress_t &remote_ip, u16 &remote_port)
         {
-            nudp::udp_sock_t *sock = state->udp->find_sock(port);
+            nudp::udp_sock_t *sock = state->Udp->find_sock(port);
             if (sock == nullptr || sock->m_fd == -1)
             {
                 return 0;
@@ -313,7 +313,7 @@ namespace ncore
 
         s32 send_to(state_t *state, u16 port, byte const *data, s32 data_size, const IPAddress_t &to_address, u16 to_port)
         {
-            nudp::udp_sock_t *sock = state->udp->find_sock(port);
+            nudp::udp_sock_t *sock = state->Udp->find_sock(port);
             if (sock == nullptr || sock->m_fd == -1)
                 return 0;
 
@@ -343,15 +343,15 @@ namespace ncore
         void init_state(state_t *state)
         {
             gUdpSock.m_port = 0xFFFF;
-            state->udp      = &gUdpState;
+            state->Udp      = &gUdpState;
         }
 
         bool open(state_t *state, u16 port)
         {
-            udp_sock_t *sock = state->udp->find_sock(port);
+            udp_sock_t *sock = state->Udp->find_sock(port);
             if (sock != nullptr)
                 return true;
-            sock = state->udp->new_sock(port);
+            sock = state->Udp->new_sock(port);
             if (sock == nullptr)
             {
                 // No available socket
@@ -369,7 +369,7 @@ namespace ncore
 
         void close(state_t *state, u16 port)
         {
-            udp_sock_t *sock = state->udp->find_sock(port);
+            udp_sock_t *sock = state->Udp->find_sock(port);
             if (sock != nullptr && sock->m_port != 0xFFFF)
             {
                 sock->m_udp.stop();
@@ -380,7 +380,7 @@ namespace ncore
 
         s32 recv_from(state_t *state, u16 port, byte *rxdata, s32 max_rxdatasize, IPAddress_t &remote_ip, u16 &remote_port)
         {
-            udp_sock_t *sock = state->udp->find_sock(port);
+            udp_sock_t *sock = state->Udp->find_sock(port);
             if (sock == nullptr || sock->m_port == 0xFFFF)
                 return 0;
 
@@ -405,7 +405,7 @@ namespace ncore
 
         s32 send_to(state_t *state, u16 port, byte const *data, s32 data_size, const IPAddress_t &to_address, u16 to_port)
         {
-            udp_sock_t *sock = state->udp->find_sock(port);
+            udp_sock_t *sock = state->Udp->find_sock(port);
             if (sock == nullptr || sock->m_port == 0xFFFF)
                 return 0;
 

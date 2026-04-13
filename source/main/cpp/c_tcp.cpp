@@ -30,7 +30,7 @@ namespace ncore
         void init_state(state_t* state)
         {
             gTcpState.m_NumClients = 0;
-            state->tcp             = &gTcpState;
+            state->Tcp             = &gTcpState;
         }
 
 #    ifdef TARGET_ESP32

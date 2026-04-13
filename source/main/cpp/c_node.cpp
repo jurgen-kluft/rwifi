@@ -54,9 +54,9 @@ namespace ncore
 
         ntask::result_t func_connect_to_remote_start(state_t* state)
         {
-            if (state->node->remote_mode == 0)
+            if (state->Node->remote_mode == 0)
             {
-                ntcp::disconnect(state->tcp, state->node->tcp_client);  // Stop any existing client connection
+                ntcp::disconnect(state->Tcp, state->Node->tcp_client);  // Stop any existing client connection
             }
 
             if (nwifi::connected(state) == false)
@@ -65,7 +65,7 @@ namespace ncore
                 return ntask::RESULT_ERROR;
             }
 
-            if (state->node->remote_mode == 0)
+            if (state->Node->remote_mode == 0)
             {
                 nlog::println("Connecting to remote tcp server...");
             }
@@ -80,7 +80,7 @@ namespace ncore
 
         ntask::result_t func_remote_connecting(state_t* state)
         {
-            if (state->node->remote_mode == 0)
+            if (state->Node->remote_mode == 0)
             {
                 IPAddress_t remote_server_ip_address = IPAddress_t::from(state->ServerIP);
                 const u16   remote_port              = state->ServerTcpPort;
@@ -90,13 +90,13 @@ namespace ncore
                 remote_server_ip_address.to_string(ipStr);
                 nlog::printfln("Connecting to %s ...", va_t(ipStr.m_const), va_t(remote_port));
 #    endif
-                state->node->tcp_client = ntcp::connect(state->tcp, remote_server_ip_address, remote_port, 8000);
-                if (ntcp::connected(state->tcp, state->node->tcp_client))
+                state->Node->tcp_client = ntcp::connect(state->Tcp, remote_server_ip_address, remote_port, 8000);
+                if (ntcp::connected(state->Tcp, state->Node->tcp_client))
                 {
 #    ifdef TARGET_DEBUG
                     nlog::println("  -> Connected to remote.");
 
-                    IPAddress_t localIP = ntcp::local_IP(state->tcp, state->node->tcp_client);
+                    IPAddress_t localIP = ntcp::local_IP(state->Tcp, state->Node->tcp_client);
                     nlog::print("     IP: ");
                     localIP.to_string(ipStr);
                     nlog::println(ipStr.m_const);
@@ -116,9 +116,9 @@ namespace ncore
 
         ntask::result_t func_remote_is_connected(state_t* state)
         {
-            if (state->node->remote_mode == 0)
+            if (state->Node->remote_mode == 0)
             {
-                if (ntcp::connected(state->tcp, state->node->tcp_client))
+                if (ntcp::connected(state->Tcp, state->Node->tcp_client))
                 {
                     return ntask::RESULT_DONE;
                 }
@@ -175,7 +175,7 @@ namespace ncore
             ntask::call(scheduler, func_remote_connecting);
             if (ntask::call(scheduler, func_remote_is_connected))
             {
-                if (state->node->remote_mode == 0)
+                if (state->Node->remote_mode == 0)
                     ntask::jmp_program(scheduler, &program_node_connected_tcp);
                 else
                     ntask::jmp_program(scheduler, &program_node_connected_udp);
@@ -191,7 +191,7 @@ namespace ncore
         void node_failure(ntask::scheduler_t* scheduler, state_t* state)
         {
             // reset the eeprom data so that next time we try to connect again from scratch
-            state->wifi->m_cache.reset();
+            state->WiFi->m_cache.reset();
             ntask::jmp_program(scheduler, &program_node_connecting_wifi);
         }
 
@@ -221,7 +221,7 @@ namespace ncore
             ntcp::init_state(state);
             nudp::init_state(state);
 
-            state->node = &gNodeState;
+            state->Node = &gNodeState;
 
             gNodeState.remote_mode = 0;  // 0 = TCP, 1 = UDP
             gNodeState.tcp_client  = nullptr;
@@ -231,11 +231,11 @@ namespace ncore
 
         void send_sensor_data(state_t* state, const byte* data, const s32 size)
         {
-            if (state->node->remote_mode == 0)
+            if (state->Node->remote_mode == 0)
             {
-                if (ntcp::connected(state->tcp, state->node->tcp_client))
+                if (ntcp::connected(state->Tcp, state->Node->tcp_client))
                 {
-                    ntcp::write(state->tcp, state->node->tcp_client, data, size);
+                    ntcp::write(state->Tcp, state->Node->tcp_client, data, size);
                 }
             }
             else
