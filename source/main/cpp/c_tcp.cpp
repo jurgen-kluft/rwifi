@@ -1,7 +1,6 @@
 #include "rcore/c_ipaddress.h"
 #include "rcore/c_state.h"
 #include "rcore/c_str.h"
-#include "rcore/c_malloc.h"
 #include "rwifi/c_tcp.h"
 #include "ccore/c_memory.h"
 
@@ -9,7 +8,7 @@
 
 #    include "Arduino.h"
 
-//#    include "rwifi/c_ethernet.h"
+// #    include "rwifi/c_ethernet.h"
 #    include "WiFi.h"
 
 #    include "WiFiServer.h"
@@ -19,8 +18,9 @@ namespace ncore
 {
     struct state_tcp_t
     {
-        ncore::s16 m_NumClients = 0;
-        WiFiClient m_WiFiClient;
+        ncore::s16  m_NumClients = 0;
+        bool        m_Active[4];
+        WiFiClient* m_WiFiClient[4];
     };
 
     namespace ntcp
@@ -30,122 +30,177 @@ namespace ncore
         void init_state(state_t* state)
         {
             gTcpState.m_NumClients = 0;
-            state->Tcp             = &gTcpState;
+            for (s16 i = 0; i < 4; ++i)
+            {
+                gTcpState.m_Active[i]     = false;
+                gTcpState.m_WiFiClient[i] = nullptr;
+            }
+            state->Tcp = &gTcpState;
         }
 
 #    ifdef TARGET_ESP32
         client_t connect(state_tcp_t* state, IPAddress_t const& _ip, u16 _port, s32 timeout_ms)
         {
-            if (state->m_NumClients == 1)
-                return nullptr;
+            client_t client = -1;
+            for (i32 i = 0; i < 4; ++i)
+            {
+                if (state->m_Active[i] == false)
+                {
+                    client = i;
+                    if (state->m_WiFiClient[i] == nullptr)
+                    {
+                        state->m_WiFiClient[i] = new WiFiClient();
+                    }
+                    break;
+                }
+            }
+            if (client == -1)
+                return client;
+
             IPAddress ip;
             IPAddress_t::to_arduino(ip, _ip);
-            if (state->m_WiFiClient.connect(ip, _port, timeout_ms) == 0)
-                return nullptr;
+            if (state->m_WiFiClient[client]->connect(ip, _port, timeout_ms) == 0)
+                return -1;
+            state->m_Active[client] = true;
             state->m_NumClients++;
-            return &state->m_WiFiClient;
+            return client;
         }
 
         bool disconnect(state_tcp_t* state, client_t& client)
         {
-            if (client == nullptr || state->m_NumClients == 0)
+            if (state->m_WiFiClient[client] == nullptr || state->m_NumClients == 0)
                 return false;
-            state->m_WiFiClient.stop();
+            state->m_WiFiClient[client]->stop();
+            state->m_Active[client] = false;
             state->m_NumClients--;
-            client = nullptr;
+            client = -1;
             return true;
         }
 
         s32 write(state_tcp_t* state, client_t client, const u8* buf, s32 size)
         {
-            if (client == nullptr)
+            if (client == -1 || !state->m_Active[client])
                 return 0;
-            return (s32)state->m_WiFiClient.write(buf, size);
+            return (s32)state->m_WiFiClient[client]->write(buf, size);
         }
 
         bool connected(state_tcp_t* state, client_t client)
         {
-            if (client == nullptr || state->m_WiFiClient.connected() == 0)
+            if (client == -1 || !state->m_Active[client])
                 return false;
-            return true;
+            return state->m_WiFiClient[client]->connected();
         }
 
         s32 available(state_tcp_t* state, client_t client)
         {
-            if (client == nullptr)
+            if (client == -1 || !state->m_Active[client])
                 return 0;
-            return state->m_WiFiClient.available();
+            return state->m_WiFiClient[client]->available();
         }
 
 #    endif
 
         IPAddress_t remote_IP(state_tcp_t* state, client_t client)
         {
-            IPAddress   ip = state->m_WiFiClient.remoteIP();
+            if (client == -1 || !state->m_Active[client])
+                return IPAddress_t{};
+            IPAddress   ip = state->m_WiFiClient[client]->remoteIP();
             IPAddress_t ret;
             IPAddress_t::from_arduino(ret, ip);
             return ret;
         }
 
-        u16 remote_port(state_tcp_t* state, client_t client) { return state->m_WiFiClient.remotePort(); }
+        u16 remote_port(state_tcp_t* state, client_t client)
+        {
+            if (client == -1 || !state->m_Active[client])
+                return 0;
+            return state->m_WiFiClient[client]->remotePort();
+        }
 
         IPAddress_t local_IP(state_tcp_t* state, client_t client)
         {
-            IPAddress   ip = state->m_WiFiClient.localIP();
+            if (client == -1 || !state->m_Active[client])
+                return IPAddress_t{};
+
+            IPAddress   ip = state->m_WiFiClient[client]->localIP();
             IPAddress_t ret;
             IPAddress_t::from_arduino(ret, ip);
             return ret;
         }
 
-        u16 local_port(state_tcp_t* state, client_t client) { return state->m_WiFiClient.localPort(); }
+        u16 local_port(state_tcp_t* state, client_t client)
+        {
+            if (client == -1 || !state->m_Active[client])
+                return 0;
+            return state->m_WiFiClient[client]->localPort();
+        }
 
 #    ifdef TARGET_ESP8266
 
         client_t connect(state_tcp_t* state, IPAddress_t const& _ip, u16 _port, s32 timeout_ms)
         {
-            if (state->m_NumClients == 1)
-                return nullptr;
-            state->m_WiFiClient.setTimeout(timeout_ms);
+            if (state->m_NumClients == 4)
+                return -1;
+
+            client_t client = -1;
+            for (i32 i = 0; i < 4; ++i)
+            {
+                if (state->m_Active[i] == false)
+                {
+                    client = i;
+                    if (state->m_WiFiClient[i] == nullptr)
+                    {
+                        state->m_WiFiClient[i] = new WiFiClient();
+                    }
+                    break;
+                }
+            }
+            if (client == -1)
+                return client;
+
+            state->m_WiFiClient[client]->setTimeout(timeout_ms);
 
             IPAddress ip;
             IPAddress_t::to_arduino(ip, _ip);
-            if (state->m_WiFiClient.connect(ip, _port) == 0)
-                return nullptr;
+            if (state->m_WiFiClient[client]->connect(ip, _port) == 0)
+                return -1;
+            state->m_Active[client] = true;
             state->m_NumClients++;
-            return &state->m_WiFiClient;
+            return client;
         }
 
         bool disconnect(state_tcp_t* state, client_t& client)
         {
-            if (client == nullptr || state->m_NumClients == 0)
+            if (client == -1 || !state->m_Active[client])
                 return false;
-            state->m_WiFiClient.stop();
+            state->m_WiFiClient[client]->stop();
+            state->m_Active[client] = false;
             state->m_NumClients--;
-            client = nullptr;
+            client = -1;
             return true;
         }
 
         s32 write(state_tcp_t* state, client_t client, const u8* buf, s32 size)
         {
-            if (client == nullptr)
+            if (client == -1 || !state->m_Active[client])
                 return 0;
-            return state->m_WiFiClient.write(buf, size);
+            return state->m_WiFiClient[client]->write(buf, size);
         }
 
         bool connected(state_tcp_t* state, client_t client)
         {
-            if (client == nullptr)
+            if (client == -1 || !state->m_Active[client])
                 return false;
-            if (state->m_WiFiClient.connected() == 0)
+            if (state->m_WiFiClient[client]->connected() == 0)
                 return false;
             return true;
         }
 
         s32 available(state_tcp_t* state, client_t client)
         {
-            if (client == nullptr)
+            if (client == -1 || !state->m_Active[client])
                 return 0;
-            return state->m_WiFiClient.available();
+            return state->m_WiFiClient[client]->available();
         }
 
 #    endif

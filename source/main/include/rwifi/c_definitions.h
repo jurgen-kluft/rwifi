@@ -16,7 +16,7 @@ namespace ncore
 
     namespace ntcp
     {
-        typedef void* client_t;
+        typedef i32 client_t;
     }
 
     namespace nwifi
