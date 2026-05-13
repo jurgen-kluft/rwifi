@@ -80,6 +80,7 @@ namespace ncore
         inline bool is_connected(const wifi_manager_t& m) { return m.m_state == WIFI_STATE_CONNECTED; }
 
         u8 const* get_mac_address(wifi_manager_t& m);
+        void      print_info(wifi_manager_t& m);
 
     }  // namespace nwifi
 }  // namespace ncore

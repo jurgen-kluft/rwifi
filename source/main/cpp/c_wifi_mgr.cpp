@@ -494,6 +494,38 @@ namespace ncore
             }
         }
 
+        void print_connection_info(wifi_manager_t& m)
+        {
+            ncore::nlog::println("WiFi Connection Info:");
+
+#        ifdef TARGET_ESP8266
+            // Print PhyMode
+            if (WiFi.getPhyMode() == WIFI_PHY_MODE_11B)
+            {
+                ncore::nlog::println(" PhyMode: 802.11b");
+            }
+            else if (WiFi.getPhyMode() == WIFI_PHY_MODE_11G)
+            {
+                ncore::nlog::println(" PhyMode: 802.11g");
+            }
+            else if (WiFi.getPhyMode() == WIFI_PHY_MODE_11N)
+            {
+                ncore::nlog::println(" PhyMode: 802.11n");
+            }
+            else
+            {
+                ncore::nlog::println(" PhyMode: Unknown");
+            }
+#        endif
+
+            ncore::nlog::printvln("  SSID: ", state->WiFiSSID);
+            ncore::nlog::print("  MAC Address: ");
+            ncore::nlog::println_mac(state->MACAddress);
+            IPAddress ip = WiFi.localIP();
+            ncore::nlog::printfln("  IP Address: %d.%d.%d.%d", va_t(ip[0]), va_t(ip[1]), va_t(ip[2]), va_t(ip[3]));
+            ncore::nlog::printfln("  RSSI: %d dBm", va_t(WiFi.RSSI()));
+        }
+
     }  // namespace nwifi
 }  // namespace ncore
 
