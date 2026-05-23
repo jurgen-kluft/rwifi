@@ -7,15 +7,20 @@
 
 namespace ncore
 {
+    namespace nwifi
+    {
+        struct wifi_manager_t;
+    }
+
     namespace ntcp
     {
         enum tcp_state_t
         {
-            TCP_STATE_DISCONNECTED = -1,
             TCP_STATE_INACTIVE     = 0,
             TCP_STATE_CONNECTING   = 1,
             TCP_STATE_BACKOFF      = 2,
-            TCP_STATE_CONNECTED    = 3
+            TCP_STATE_CONNECTED    = 3,
+            TCP_STATE_DISCONNECTED = 4
         };
 
         // ------------------------------------------------------------
@@ -31,10 +36,19 @@ namespace ncore
         typedef int (*tcp_write_fn)(void* sock, const void* src, u32 len);
         typedef void (*tcp_stop_fn)(void* sock);
 
-        typedef int (*tcp_fmp_process_hdr_fn)(const void* buf, u32 len);
+        struct tcp_buffer_t
+        {
+            inline tcp_buffer_t(u8* buffer, u16 length)
+                : m_buffer(buffer)
+                , m_length(length)
+            {
+            }
+            u8* m_buffer;
+            u16 m_length;
+        };
 
-        typedef u8* (*tcp_recv_acquire_fn)(void* ctx, u16 len);
-        typedef void (*tcp_recv_commit_fn)(void* ctx, u8* buf, u16 len);
+        typedef tcp_buffer_t (*tcp_recv_acquire_fn)(void* ctx, void* hdr);
+        typedef void (*tcp_recv_commit_fn)(void* ctx, void* hdr, tcp_buffer_t buffer);
         typedef void (*tcp_recv_abort_fn)(void* ctx);
 
         // ------------------------------------------------------------
@@ -60,13 +74,6 @@ namespace ncore
 
         void* setup(tcp_socket_ops_t* ops);
 
-        // framing message protocol (fmp) ops - optional, only needed if receiving data
-        struct tcp_fmp_ops_t
-        {
-            // process the header and return the length of the packet payload
-            tcp_fmp_process_hdr_fn m_process_hdr;
-        };
-
         struct tcp_recv_ops_t
         {
             tcp_recv_acquire_fn m_acquire;
@@ -89,6 +96,15 @@ namespace ncore
             timing->m_backoff_max_ms     = 5 * 60000;  // 5 minutes
         }
 
+        typedef void (*tcp_user_on_connected_fn)(void* ctx);
+        typedef void (*tcp_user_on_disconnected_fn)(void* ctx);
+
+        struct tcp_callbacks_t
+        {
+            tcp_user_on_connected_fn    m_on_connected;
+            tcp_user_on_disconnected_fn m_on_disconnected;
+        };
+
         // ------------------------------------------------------------
         // TCP client
         // ------------------------------------------------------------
@@ -96,7 +112,6 @@ namespace ncore
         {
             time_ops_t       m_time_ops;
             tcp_socket_ops_t m_sock_ops;
-            tcp_fmp_ops_t    m_fmp_ops;
             tcp_recv_ops_t   m_recv_ops;
             tcp_timing_t     m_timing;
         };
@@ -111,19 +126,25 @@ namespace ncore
             // config
             const config_t* m_config;
 
+            // user
+            void*           m_user;
+            tcp_callbacks_t m_user_callbacks;
+
             // runtime
+            bool        m_enabled;
+            tcp_state_t m_last_state;
             tcp_state_t m_state;
             u32         m_last_attempt_ms;
             u32         m_connect_start_ms;
             u32         m_backoff_ms;
 
-            // TCP receiving, framing state
-            void* m_tcp_recv_ctx;
-            u16   m_tcp_recv_header_size;
-            u16   m_tcp_recv_expected;
-            u16   m_tcp_recv_offset;
-            u8    m_tcp_recv_header[32];
-            u8*   m_tcp_recv_buf;
+            // receiving, framing state
+            void*        m_tcp_recv_ctx;
+            u16          m_tcp_recv_header_size;
+            u16          m_tcp_recv_expected;
+            u16          m_tcp_recv_offset;
+            u8           m_tcp_recv_header[32];
+            tcp_buffer_t m_tcp_recv_buf;
         };
 
         // ------------------------------------------------------------
@@ -131,9 +152,10 @@ namespace ncore
         // ------------------------------------------------------------
 
         void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port, void* recv_ctx = nullptr, u16 hdr_size = 0);
-        void activate(tcp_client_t& c);
-        void deactivate(tcp_client_t& c);
-        void tick(tcp_client_t& c);
+        void set_user_callbacks(tcp_client_t& c, void* user, tcp_callbacks_t callbacks);
+        void connect(tcp_client_t& c);
+        void disconnect(tcp_client_t& c);
+        bool tick_tcp_client(nwifi::wifi_manager_t* wifi_mgr, tcp_client_t& c);
         bool send(tcp_client_t& c, const void* data, u16 len);
 
         inline bool is_connected(const tcp_client_t& c) { return c.m_state == TCP_STATE_CONNECTED; }

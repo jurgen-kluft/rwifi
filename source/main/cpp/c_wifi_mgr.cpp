@@ -106,6 +106,22 @@ namespace ncore
                     memcpy(cache.wifi_bssid, ap_info.bssid, 6);
                 }
 
+                m.m_rssi = ap_info.rssi;
+                
+                m.m_has_cached_ip = true;
+                m.m_ip_address[0] = cache.ip_address & 0xFF;
+                m.m_ip_address[1] = (cache.ip_address >> 8) & 0xFF;
+                m.m_ip_address[2] = (cache.ip_address >> 16) & 0xFF;
+                m.m_ip_address[3] = (cache.ip_address >> 24) & 0xFF;
+
+                m.m_has_cached_mac = true;
+                m.m_mac_address[0] = ap_info.bssid[0];
+                m.m_mac_address[1] = ap_info.bssid[1];
+                m.m_mac_address[2] = ap_info.bssid[2];
+                m.m_mac_address[3] = ap_info.bssid[3];
+                m.m_mac_address[4] = ap_info.bssid[4];
+                m.m_mac_address[5] = ap_info.bssid[5];
+
                 // Save your persistent structure using your internal tools here:
                 neeprom::save((const byte*)&cache, sizeof(wifi_cache_t));
             }
@@ -285,6 +301,28 @@ namespace ncore
             }
         }
 
+        u8 const* get_ip_address(wifi_manager_t& m)
+        {
+            if (m.m_has_cached_ip)
+                return m.m_ip_address;
+
+            // use esp-idf to obtain the current IP address if not cached (e.g., on first boot or if cache is invalid)
+            esp_netif_ip_info_t ip_info;
+            if (esp_netif_get_ip_info(g_netif_sta, &ip_info) == ESP_OK)
+            {
+                m.m_ip_address[0] = ip_info.ip.addr & 0xFF;
+                m.m_ip_address[1] = (ip_info.ip.addr >> 8) & 0xFF;
+                m.m_ip_address[2] = (ip_info.ip.addr >> 16) & 0xFF;
+                m.m_ip_address[3] = (ip_info.ip.addr >> 24) & 0xFF;
+                m.m_has_cached_ip = true;
+                return m.m_ip_address;
+            }
+
+            // zero out the IP address on failure to avoid returning uninitialized data
+            g_memset(m.m_ip_address, 0, 4);
+            return m.m_ip_address;
+        }
+
         u8 const* get_mac_address(wifi_manager_t& m)
         {
             if (m.m_has_cached_mac)
@@ -302,6 +340,18 @@ namespace ncore
                 g_memset(m.m_mac_address, 0, 6);
             }
             return m.m_mac_address;
+        }
+
+        void print_info(wifi_manager_t& m)
+        {
+            ncore::nlog::println("WiFi Connection Info:");
+            ncore::nlog::printvln("  SSID: ", m.m_config->ssid);
+            ncore::nlog::print("  MAC Address: ");
+            ncore::nlog::println_mac(m.m_mac_address);
+            ncore::nlog::print("  IP Address: ");
+            ncore::nlog::println_ip(m.m_ip_address);
+
+            ncore::nlog::printfln("  RSSI: %d dBm", va_t() m.m_rssi);
         }
 
     }  // namespace nwifi
@@ -339,6 +389,9 @@ namespace ncore
             cache.ip_dns2       = WiFi.dnsIP(1);
             cache.wifi_channel  = WiFi.channel();
             memcpy(cache.wifi_bssid, WiFi.BSSID(), 6);
+
+            get_ip_address(m);
+            get_mac_address(m);
 
             // Proactively save persistent data structures using your local EEPROM/Flash layer here:
             neeprom::save((const byte*)&cache, sizeof(wifi_cache_t));
@@ -455,7 +508,18 @@ namespace ncore
                     }
                     break;
 
-                case WIFI_STATE_CONNECTED: break;
+                case WIFI_STATE_CONNECTED:
+                    // Obtain RSSI state
+                    esp_wifi_ap_record_t ap_info;
+                    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)
+                    {
+                        m.m_rssi = ap_info.rssi;
+                    }
+                    else
+                    {
+                        m.m_rssi = 0;  // Default to 0 if RSSI retrieval fails
+                    }
+                    break;
 
                 case WIFI_STATE_INACTIVE:
                 default: break;
@@ -494,36 +558,42 @@ namespace ncore
             }
         }
 
-        void print_connection_info(wifi_manager_t& m)
+        u8 const* get_ip_address(wifi_manager_t& m)
+        {
+            if (m.m_has_cached_ip)
+                return m.m_ip_address;
+
+            // On ESP8266 Arduino, the local IP can be obtained directly from the WiFi library
+            IPAddress ip = WiFi.localIP();
+            m.m_ip_address[0] = ip[0];
+            m.m_ip_address[1] = ip[1];
+            m.m_ip_address[2] = ip[2];
+            m.m_ip_address[3] = ip[3];
+            m.m_has_cached_ip = true;
+            return m.m_ip_address;
+        }
+
+        u8 const* get_mac_address(wifi_manager_t& m)
+        {
+            if (m.m_has_cached_mac)
+                return m.m_mac_address;
+
+            WiFi.macAddress(m.m_mac_address);
+            m.m_has_cached_mac = true;
+
+            return m.m_mac_address;
+        }
+
+        void print_info(wifi_manager_t& m)
         {
             ncore::nlog::println("WiFi Connection Info:");
-
-#        ifdef TARGET_ESP8266
-            // Print PhyMode
-            if (WiFi.getPhyMode() == WIFI_PHY_MODE_11B)
-            {
-                ncore::nlog::println(" PhyMode: 802.11b");
-            }
-            else if (WiFi.getPhyMode() == WIFI_PHY_MODE_11G)
-            {
-                ncore::nlog::println(" PhyMode: 802.11g");
-            }
-            else if (WiFi.getPhyMode() == WIFI_PHY_MODE_11N)
-            {
-                ncore::nlog::println(" PhyMode: 802.11n");
-            }
-            else
-            {
-                ncore::nlog::println(" PhyMode: Unknown");
-            }
-#        endif
-
-            ncore::nlog::printvln("  SSID: ", state->WiFiSSID);
+            ncore::nlog::printvln("  SSID: ", m.m_config->ssid);
             ncore::nlog::print("  MAC Address: ");
-            ncore::nlog::println_mac(state->MACAddress);
-            IPAddress ip = WiFi.localIP();
-            ncore::nlog::printfln("  IP Address: %d.%d.%d.%d", va_t(ip[0]), va_t(ip[1]), va_t(ip[2]), va_t(ip[3]));
-            ncore::nlog::printfln("  RSSI: %d dBm", va_t(WiFi.RSSI()));
+            ncore::nlog::println_mac(m.m_mac_address);
+            ncore::nlog::print("  IP Address: ");
+            ncore::nlog::println_ip(m.m_ip_address);
+
+            ncore::nlog::printfln("  RSSI: %d dBm", va_t() m.m_rssi);
         }
 
     }  // namespace nwifi

@@ -62,6 +62,9 @@ namespace ncore
 
             bool m_has_cached_mac;
             u8   m_mac_address[6];
+            bool m_has_cached_ip;
+            u8   m_ip_address[4];
+            u32  m_rssi;
 
             // runtime
             wifi_state_t m_state;
@@ -79,6 +82,7 @@ namespace ncore
 
         inline bool is_connected(const wifi_manager_t& m) { return m.m_state == WIFI_STATE_CONNECTED; }
 
+        u8 const* get_ip_address(wifi_manager_t& m);
         u8 const* get_mac_address(wifi_manager_t& m);
         void      print_info(wifi_manager_t& m);
 
