@@ -107,7 +107,7 @@ namespace ncore
                 }
 
                 g_wifi_mgr->m_rssi = ap_info.rssi;
-                
+
                 g_wifi_mgr->m_has_cached_ip = true;
                 g_wifi_mgr->m_ip_address[0] = cache.ip_address & 0xFF;
                 g_wifi_mgr->m_ip_address[1] = (cache.ip_address >> 8) & 0xFF;
@@ -390,8 +390,8 @@ namespace ncore
             cache.wifi_channel  = WiFi.channel();
             memcpy(cache.wifi_bssid, WiFi.BSSID(), 6);
 
-            get_ip_address(m);
-            get_mac_address(m);
+            get_ip_address(*g_wifi_mgr);
+            get_mac_address(*g_wifi_mgr);
 
             // Proactively save persistent data structures using your local EEPROM/Flash layer here:
             neeprom::save((const byte*)&cache, sizeof(wifi_cache_t));
@@ -510,15 +510,16 @@ namespace ncore
 
                 case WIFI_STATE_CONNECTED:
                     // Obtain RSSI state
-                    esp_wifi_ap_record_t ap_info;
-                    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)
-                    {
-                        m.m_rssi = ap_info.rssi;
-                    }
-                    else
-                    {
-                        m.m_rssi = 0;  // Default to 0 if RSSI retrieval fails
-                    }
+                    // esp_wifi_ap_record_t ap_info;
+                    // if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)
+                    // {
+                    //     m.m_rssi = ap_info.rssi;
+                    // }
+                    // else
+                    // {
+                    //     m.m_rssi = 0;  // Default to 0 if RSSI retrieval fails
+                    // }
+                    m.m_rssi = 0;  // Default to 0 if RSSI retrieval fails
                     break;
 
                 case WIFI_STATE_INACTIVE:
@@ -564,7 +565,7 @@ namespace ncore
                 return m.m_ip_address;
 
             // On ESP8266 Arduino, the local IP can be obtained directly from the WiFi library
-            IPAddress ip = WiFi.localIP();
+            IPAddress ip      = WiFi.localIP();
             m.m_ip_address[0] = ip[0];
             m.m_ip_address[1] = ip[1];
             m.m_ip_address[2] = ip[2];
@@ -593,7 +594,7 @@ namespace ncore
             ncore::nlog::print("  IP Address: ");
             ncore::nlog::println_ip(m.m_ip_address);
 
-            ncore::nlog::printfln("  RSSI: %d dBm", va_t() m.m_rssi);
+            ncore::nlog::printfln("  RSSI: %d dBm", va_t(m.m_rssi));
         }
 
     }  // namespace nwifi
