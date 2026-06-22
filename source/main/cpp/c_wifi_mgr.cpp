@@ -106,21 +106,21 @@ namespace ncore
                     memcpy(cache.wifi_bssid, ap_info.bssid, 6);
                 }
 
-                m.m_rssi = ap_info.rssi;
+                g_wifi_mgr->m_rssi = ap_info.rssi;
                 
-                m.m_has_cached_ip = true;
-                m.m_ip_address[0] = cache.ip_address & 0xFF;
-                m.m_ip_address[1] = (cache.ip_address >> 8) & 0xFF;
-                m.m_ip_address[2] = (cache.ip_address >> 16) & 0xFF;
-                m.m_ip_address[3] = (cache.ip_address >> 24) & 0xFF;
+                g_wifi_mgr->m_has_cached_ip = true;
+                g_wifi_mgr->m_ip_address[0] = cache.ip_address & 0xFF;
+                g_wifi_mgr->m_ip_address[1] = (cache.ip_address >> 8) & 0xFF;
+                g_wifi_mgr->m_ip_address[2] = (cache.ip_address >> 16) & 0xFF;
+                g_wifi_mgr->m_ip_address[3] = (cache.ip_address >> 24) & 0xFF;
 
-                m.m_has_cached_mac = true;
-                m.m_mac_address[0] = ap_info.bssid[0];
-                m.m_mac_address[1] = ap_info.bssid[1];
-                m.m_mac_address[2] = ap_info.bssid[2];
-                m.m_mac_address[3] = ap_info.bssid[3];
-                m.m_mac_address[4] = ap_info.bssid[4];
-                m.m_mac_address[5] = ap_info.bssid[5];
+                g_wifi_mgr->m_has_cached_mac = true;
+                g_wifi_mgr->m_mac_address[0] = ap_info.bssid[0];
+                g_wifi_mgr->m_mac_address[1] = ap_info.bssid[1];
+                g_wifi_mgr->m_mac_address[2] = ap_info.bssid[2];
+                g_wifi_mgr->m_mac_address[3] = ap_info.bssid[3];
+                g_wifi_mgr->m_mac_address[4] = ap_info.bssid[4];
+                g_wifi_mgr->m_mac_address[5] = ap_info.bssid[5];
 
                 // Save your persistent structure using your internal tools here:
                 neeprom::save((const byte*)&cache, sizeof(wifi_cache_t));
@@ -351,7 +351,7 @@ namespace ncore
             ncore::nlog::print("  IP Address: ");
             ncore::nlog::println_ip(m.m_ip_address);
 
-            ncore::nlog::printfln("  RSSI: %d dBm", va_t() m.m_rssi);
+            ncore::nlog::printfln("  RSSI: %d dBm", va_t(m.m_rssi));
         }
 
     }  // namespace nwifi

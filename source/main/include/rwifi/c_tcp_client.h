@@ -38,11 +38,6 @@ namespace ncore
 
         struct tcp_buffer_t
         {
-            inline tcp_buffer_t(u8* buffer, u16 length)
-                : m_buffer(buffer)
-                , m_length(length)
-            {
-            }
             u8* m_buffer;
             u16 m_length;
         };

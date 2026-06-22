@@ -10,7 +10,6 @@
 #    include "rcore/c_log.h"
 #    include "rcore/c_state.h"
 #    include "rcore/c_str.h"
-#    include "rcore/c_task.h"
 #    include "rcore/c_timer.h"
 
 #    include "rwifi/c_tcp.h"
@@ -76,7 +75,7 @@ namespace ncore
                 c.m_backoff_ms        = c.m_config->m_timing.m_backoff_initial_ms;
                 c.m_tcp_recv_expected = 0;
                 c.m_tcp_recv_offset   = 0;
-                c.m_tcp_recv_buf      = 0;
+                c.m_tcp_recv_buf      = {0, 0};
 
                 if (c.m_last_state == TCP_STATE_CONNECTING && c.m_user_callbacks.m_on_connected)
                     c.m_user_callbacks.m_on_connected(c.m_user);
@@ -104,22 +103,18 @@ namespace ncore
         {
             if (!c.m_config->m_sock_ops.m_connected(c.m_socket))
             {
-                if (c.m_tcp_recv_buf && c.m_config->m_recv_ops.m_abort)
+                if (c.m_tcp_recv_buf.m_buffer && c.m_config->m_recv_ops.m_abort)
                     c.m_config->m_recv_ops.m_abort(c.m_tcp_recv_ctx);
 
                 // Notify the user of disconnection if we were previously connected
                 if (c.m_user_callbacks.m_on_disconnected)
                     c.m_user_callbacks.m_on_disconnected(c.m_user);
 
-                c.m_tcp_recv_buf = 0;
+                c.m_tcp_recv_buf = {0, 0};
                 c.m_config->m_sock_ops.m_stop(c.m_socket);
                 s_enter_backoff(c);
                 return;
             }
-
-            // No protocol defined means not receiving any data, just maintain the connection for sending
-            if (c.m_config->m_fmp_ops.m_process_hdr == nullptr)
-                return;
 
             while (c.m_config->m_sock_ops.m_available(c.m_socket) > 0)
             {
@@ -136,11 +131,8 @@ namespace ncore
                         return;
                     }
 
-                    c.m_tcp_recv_expected = c.m_config->m_fmp_ops.m_process_hdr(, c.m_tcp_recv_header_size);
-
-                    c.m_tcp_recv_offset       = 0;
-                    c.m_tcp_recv_buf.m_buffer = c.m_config->m_recv_ops.m_acquire(c.m_tcp_recv_ctx, c.m_tcp_recv_header);
-                    c.m_tcp_recv_buf.m_length = c.m_tcp_recv_expected;
+                    c.m_tcp_recv_offset = 0;
+                    c.m_tcp_recv_buf    = c.m_config->m_recv_ops.m_acquire(c.m_tcp_recv_ctx, c.m_tcp_recv_header);
 
                     if (!c.m_tcp_recv_buf.m_buffer)
                     {
@@ -179,7 +171,6 @@ namespace ncore
             setup(&config->m_time_ops);
             setup(&config->m_timing);
 
-            config->m_fmp_ops.m_process_hdr = nullptr;
             config->m_recv_ops.m_acquire    = nullptr;
             config->m_recv_ops.m_commit     = nullptr;
             config->m_recv_ops.m_abort      = nullptr;
@@ -201,8 +192,8 @@ namespace ncore
             c.m_config = config;
 
             c.m_enabled          = false;
-            c.m_last_state       = TCP_STATE_DISABLED;
-            c.m_state            = TCP_STATE_DISABLED;
+            c.m_last_state       = TCP_STATE_INACTIVE;
+            c.m_state            = TCP_STATE_INACTIVE;
             c.m_last_attempt_ms  = 0;
             c.m_connect_start_ms = 0;
             c.m_backoff_ms       = config->m_timing.m_backoff_initial_ms;
@@ -211,7 +202,7 @@ namespace ncore
             c.m_tcp_recv_header_size = recv_header_size;
             c.m_tcp_recv_expected    = 0;
             c.m_tcp_recv_offset      = 0;
-            c.m_tcp_recv_buf         = 0;
+            c.m_tcp_recv_buf         = {0, 0};
         }
 
         void set_user_callbacks(tcp_client_t& c, void* user, tcp_callbacks_t callbacks)
@@ -233,10 +224,10 @@ namespace ncore
             if (!c.m_enabled)
                 return;
 
-            if (c.m_tcp_recv_buf && c.m_config->m_recv_ops.m_abort)
+            if (c.m_tcp_recv_buf.m_buffer != nullptr && c.m_config->m_recv_ops.m_abort)
                 c.m_config->m_recv_ops.m_abort(c.m_tcp_recv_ctx);
 
-            c.m_tcp_recv_buf = nullptr;
+            c.m_tcp_recv_buf = {0, 0};
 
             if (c.m_state == TCP_STATE_CONNECTED)
             {
@@ -263,12 +254,12 @@ namespace ncore
         }
 
         // returns true if the client is connected, false otherwise
-        bool tick_tcp_client(nwifi::wifi_manager_t* wifi_mgr, tcp_client_t& c)
+        bool tick_tcp_client(nwifi::wifi_manager_t* wifi_mgr, tcp_client_t& tcp)
         {
-            if (!c.m_enabled)
+            if (!tcp.m_enabled)
                 return false;
 
-            if (nwifi::is_connected(wifi))
+            if (nwifi::is_connected(*wifi_mgr))
             {
                 // If Wi-Fi just recovered or is active, allow TCP to run
                 if (tcp.m_state == ntcp::TCP_STATE_INACTIVE)
@@ -276,12 +267,12 @@ namespace ncore
                     ntcp::activate(tcp);  // Boot up the TCP connection engine
                 }
 
-                switch (c.m_state)
+                switch (tcp.m_state)
                 {
-                    case TCP_STATE_DISCONNECTED: s_attempt_connect(c); break;
-                    case TCP_STATE_CONNECTING: s_poll_connecting(c); break;
-                    case TCP_STATE_CONNECTED: s_poll_connected(c); break;
-                    case TCP_STATE_BACKOFF: s_poll_backoff(c); break;
+                    case TCP_STATE_DISCONNECTED: s_attempt_connect(tcp); break;
+                    case TCP_STATE_CONNECTING: s_poll_connecting(tcp); break;
+                    case TCP_STATE_CONNECTED: s_poll_connected(tcp); break;
+                    case TCP_STATE_BACKOFF: s_poll_backoff(tcp); break;
                 }
             }
             else
@@ -293,7 +284,7 @@ namespace ncore
                     deactivate(tcp);
                 }
             }
-            return c.m_state == TCP_STATE_CONNECTED;
+            return tcp.m_state == TCP_STATE_CONNECTED;
         }
 
         bool send(tcp_client_t& c, const void* data, u16 len)
@@ -363,7 +354,6 @@ namespace ncore
             ops->m_read      = wifi_read;
             ops->m_write     = wifi_write;
             ops->m_stop      = wifi_stop;
-
             return new WiFiClient();
         }
 #else
