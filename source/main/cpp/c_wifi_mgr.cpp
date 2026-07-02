@@ -199,7 +199,7 @@ namespace ncore
 
                     if (m.m_use_fast_connect && m.m_cache.ip_address != 0)
                     {
-                        ESP_LOGI("WIFI", "Fast-connecting to %s...", m.m_config->ssid);
+                        nlog::log_infof("WIFI", "Fast-connecting to %s...", va_list_t(va_t(m.m_config->ssid)));
 
                         // 1. Inject Static IP configurations to bypass DHCP steps entirely
                         esp_netif_dhcpc_stop(g_netif_sta);
@@ -220,7 +220,7 @@ namespace ncore
                     }
                     else
                     {
-                        ESP_LOGI("WIFI", "Normal-connecting to %s...", m.m_config->ssid);
+                        nlog::log_infof("WIFI", "Normal-connecting to %s...", va_list_t(va_t(m.m_config->ssid)));
 
                         // Rollback network defaults for a clean channel sweep
                         esp_netif_dhcpc_start(g_netif_sta);
@@ -241,7 +241,7 @@ namespace ncore
                     {
                         if (m.m_use_fast_connect)
                         {
-                            ESP_LOGW("WIFI", "Fast connect failed/timed out. Falling back to normal.");
+                            nlog::log_warn("WIFI", "Fast connect failed/timed out. Falling back to normal.");
                             m.m_use_fast_connect = false;
                             m.m_state            = WIFI_STATE_DISCONNECTED;
                         }
@@ -297,7 +297,7 @@ namespace ncore
                 m.m_state           = WIFI_STATE_BACKOFF;
                 m.m_last_attempt_ms = now;
 
-                ESP_LOGW("WIFI", "Connection dropped. Backing off for %lu ms (Jittered from %lu ms)", m.m_current_wait_ms, m.m_backoff_ms);
+                nlog::log_warnf("WIFI", "Connection dropped. Backing off for %lu ms (Jittered from %lu ms)", va_list_t(va_t(m.m_current_wait_ms), va_t(m.m_backoff_ms)));
             }
         }
 
@@ -344,14 +344,14 @@ namespace ncore
 
         void print_info(wifi_manager_t& m)
         {
-            ncore::nlog::println("WiFi Connection Info:");
-            ncore::nlog::printvln("  SSID: ", m.m_config->ssid);
-            ncore::nlog::print("  MAC Address: ");
-            ncore::nlog::println_mac(m.m_mac_address);
-            ncore::nlog::print("  IP Address: ");
-            ncore::nlog::println_ip(m.m_ip_address);
+            // ncore::nlog::log_info("WIFI", "Connection Info:");
+            // ncore::nlog::printvln("WIFI", "  SSID: ", m.m_config->ssid);
+            // ncore::nlog::print("WIFI", "  MAC Address: ");
+            // ncore::nlog::println_mac("WIFI", m.m_mac_address);
+            // ncore::nlog::print("WIFI", "  IP Address: ");
+            // ncore::nlog::println_ip("WIFI", m.m_ip_address);
 
-            ncore::nlog::printfln("  RSSI: %d dBm", va_t(m.m_rssi));
+            // ncore::nlog::printfln("  RSSI: %d dBm", va_list_t(va_t(m.m_rssi)));
         }
 
     }  // namespace nwifi
