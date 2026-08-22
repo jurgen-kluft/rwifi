@@ -23,6 +23,16 @@ namespace ncore
             TCP_STATE_DISCONNECTED = 4
         };
 
+        // Header for all packets, fixed size 8 bytes, little-endian
+        struct msg_hdr_t
+        {
+            u16 magic;        // Always 0xF00D
+            u16 msg_type;     // 0x01 = Handshake, 0x02 = File Init, 0x03 = Data Chunk
+            u16 payload_len;  // Payload is always <= 65535 bytes
+            u16 checksum;     // Checksum of the payload
+        };
+
+
         // ------------------------------------------------------------
         // Function pointer typedefs
         // ------------------------------------------------------------
@@ -135,10 +145,9 @@ namespace ncore
 
             // receiving, framing state
             void*        m_tcp_recv_ctx;
-            u16          m_tcp_recv_header_size;
             u16          m_tcp_recv_expected;
             u16          m_tcp_recv_offset;
-            u8           m_tcp_recv_header[32];
+            u8           m_tcp_recv_header[16]; // Must be at least sizeof(msg_hdr_t)
             tcp_buffer_t m_tcp_recv_buf;
         };
 
@@ -146,12 +155,13 @@ namespace ncore
         // API
         // ------------------------------------------------------------
 
-        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port, void* recv_ctx = nullptr, u16 hdr_size = 0);
+        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port, void* recv_ctx = nullptr);
         void set_user_callbacks(tcp_client_t& c, void* user, tcp_callbacks_t callbacks);
         void connect(tcp_client_t& c);
         void disconnect(tcp_client_t& c);
         bool tick_tcp_client(nwifi::wifi_manager_t* wifi_mgr, tcp_client_t& c);
         bool send(tcp_client_t& c, const void* data, u16 len);
+        bool scheduled_send(tcp_client_t& c, const void* data, u16 len);
 
         inline bool is_connected(const tcp_client_t& c) { return c.m_state == TCP_STATE_CONNECTED; }
 

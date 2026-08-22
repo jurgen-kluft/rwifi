@@ -120,10 +120,11 @@ namespace ncore
             {
                 if (c.m_tcp_recv_expected == 0)
                 {
-                    if (c.m_config->m_sock_ops.m_available(c.m_socket) < c.m_tcp_recv_header_size)
+                    const i32 hdr_size = sizeof(msg_hdr_t);
+                    if (c.m_config->m_sock_ops.m_available(c.m_socket) <= hdr_size)
                         return;
 
-                    if (c.m_config->m_sock_ops.m_read(c.m_socket, c.m_tcp_recv_header, c.m_tcp_recv_header_size) < 0)
+                    if (c.m_config->m_sock_ops.m_read(c.m_socket, c.m_tcp_recv_header, hdr_size) < 0)
                     {
                         if (c.m_config->m_recv_ops.m_abort)
                             c.m_config->m_recv_ops.m_abort(c.m_tcp_recv_ctx);
@@ -171,9 +172,9 @@ namespace ncore
             setup(&config->m_time_ops);
             setup(&config->m_timing);
 
-            config->m_recv_ops.m_acquire    = nullptr;
-            config->m_recv_ops.m_commit     = nullptr;
-            config->m_recv_ops.m_abort      = nullptr;
+            config->m_recv_ops.m_acquire = nullptr;
+            config->m_recv_ops.m_commit  = nullptr;
+            config->m_recv_ops.m_abort   = nullptr;
 
             void* socket = setup(&config->m_sock_ops);
 
@@ -183,7 +184,7 @@ namespace ncore
         // ------------------------------------------------------------
         // Public API
         // ------------------------------------------------------------
-        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port, void* recv_ctx, u16 recv_header_size)
+        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port, void* recv_ctx)
         {
             c.m_socket = socket;
             c.m_ip     = ip;
@@ -199,7 +200,6 @@ namespace ncore
             c.m_backoff_ms       = config->m_timing.m_backoff_initial_ms;
 
             c.m_tcp_recv_ctx         = recv_ctx;
-            c.m_tcp_recv_header_size = recv_header_size;
             c.m_tcp_recv_expected    = 0;
             c.m_tcp_recv_offset      = 0;
             c.m_tcp_recv_buf         = {0, 0};
@@ -294,6 +294,16 @@ namespace ncore
             c.m_config->m_sock_ops.m_write(c.m_socket, data, len);
             return true;
         }
+
+        bool scheduled_send(tcp_client_t& c, const void* data, u16 len)
+        {
+            // TODO implement a scheduled send mechanism that queues data to be 
+            // sent in the main loop instead of sending it directly from the callback context. 
+            // This will help avoid potential issues with sending data from interrupt or callback 
+            // contexts, which can lead to unexpected behavior or crashes.
+            return false;
+        }
+
 
     }  // namespace ntcp
 }  // namespace ncore
