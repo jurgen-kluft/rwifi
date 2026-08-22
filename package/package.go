@@ -1,7 +1,8 @@
 package rwifi
 
 import (
-	denv "github.com/jurgen-kluft/ccode/denv"
+	csdk "github.com/jurgen-kluft/csdk/package"
+	denv "github.com/jurgen-kluft/go-ide/denv"
 	rcore "github.com/jurgen-kluft/rcore/package"
 )
 
@@ -15,11 +16,13 @@ func GetPackage() *denv.Package {
 	name := repo_name
 
 	// dependencies
+	sdkpkg := csdk.GetPackage()
 	corepkg := rcore.GetPackage()
 
 	// main package
 	mainpkg := denv.NewPackage(repo_path, repo_name)
 	mainpkg.AddPackage(corepkg)
+	mainpkg.AddPackage(sdkpkg)
 
 	// esp32 library
 	esp32wifilib := denv.SetupCppLibProjectForArduinoEsp32(mainpkg, name+"-esp32")
