@@ -23,16 +23,6 @@ namespace ncore
             TCP_STATE_DISCONNECTED = 4
         };
 
-        // Header for all packets, fixed size 8 bytes, little-endian
-        struct msg_hdr_t
-        {
-            u16 magic;        // Always 0xF00D
-            u16 msg_type;     // 0x01 = Handshake, 0x02 = File Init, 0x03 = Data Chunk
-            u16 payload_len;  // Payload is always <= 65535 bytes
-            u16 checksum;     // Checksum of the payload
-        };
-
-
         // ------------------------------------------------------------
         // Function pointer typedefs
         // ------------------------------------------------------------
@@ -41,20 +31,21 @@ namespace ncore
 
         typedef bool (*tcp_connect_fn)(void* sock, u32 ip, u16 port);
         typedef bool (*tcp_connected_fn)(void* sock);
-        typedef int (*tcp_available_fn)(void* sock);
-        typedef int (*tcp_read_fn)(void* sock, void* dst, u32 len);
-        typedef int (*tcp_write_fn)(void* sock, const void* src, u32 len);
+        typedef i32 (*tcp_available_fn)(void* sock);
+        typedef i32 (*tcp_read_fn)(void* sock, void* dst, u32 len);
+        typedef i32 (*tcp_write_fn)(void* sock, const void* src, u32 len);
         typedef void (*tcp_stop_fn)(void* sock);
 
         struct tcp_buffer_t
         {
             u8* m_buffer;
-            u16 m_length;
+            u32 m_length;
         };
 
-        typedef tcp_buffer_t (*tcp_recv_acquire_fn)(void* ctx, void* hdr);
-        typedef void (*tcp_recv_commit_fn)(void* ctx, void* hdr, tcp_buffer_t buffer);
+        typedef bool (*tcp_recv_acquire_fn)(void* ctx, msg_hdr_t* hdr, tcp_buffer_t* out);
+        typedef void (*tcp_recv_commit_fn)(void* ctx, msg_hdr_t* hdr, tcp_buffer_t buffer);
         typedef void (*tcp_recv_abort_fn)(void* ctx);
+        typedef void (*tcp_recv_complete_fn)(u32 msg_type, u32 data_type, u32 data_size, byte const* data_ptr, void* user_context);
 
         // ------------------------------------------------------------
         // Ops groupings
@@ -79,17 +70,20 @@ namespace ncore
 
         void* setup(tcp_socket_ops_t* ops);
 
-        struct tcp_recv_ops_t
+        struct tcp_recv_plugin_t
         {
-            tcp_recv_acquire_fn m_acquire;
-            tcp_recv_commit_fn  m_commit;
-            tcp_recv_abort_fn   m_abort;
+            tcp_recv_acquire_fn  m_acquire;
+            tcp_recv_commit_fn   m_commit;
+            tcp_recv_abort_fn    m_abort;
+            void*                m_on_complete_ctx;
+            tcp_recv_complete_fn m_on_complete;
         };
 
         struct tcp_timing_t
         {
             u32 m_connect_timeout_ms;
             u32 m_backoff_initial_ms;
+            u32 m_backoff_jitter_ms;
             u32 m_backoff_max_ms;
         };
 
@@ -98,17 +92,12 @@ namespace ncore
             // default timing values
             timing->m_connect_timeout_ms = 5000;       // 5 seconds
             timing->m_backoff_initial_ms = 1000;       // 1 second
+            timing->m_backoff_jitter_ms  = 500;        // 0.5 seconds
             timing->m_backoff_max_ms     = 5 * 60000;  // 5 minutes
         }
 
         typedef void (*tcp_user_on_connected_fn)(void* ctx);
         typedef void (*tcp_user_on_disconnected_fn)(void* ctx);
-
-        struct tcp_callbacks_t
-        {
-            tcp_user_on_connected_fn    m_on_connected;
-            tcp_user_on_disconnected_fn m_on_disconnected;
-        };
 
         // ------------------------------------------------------------
         // TCP client
@@ -117,7 +106,6 @@ namespace ncore
         {
             time_ops_t       m_time_ops;
             tcp_socket_ops_t m_sock_ops;
-            tcp_recv_ops_t   m_recv_ops;
             tcp_timing_t     m_timing;
         };
         void* setup_default(config_t* config);
@@ -129,11 +117,15 @@ namespace ncore
             u16   m_port;
 
             // config
-            const config_t* m_config;
+            time_ops_t       m_config_time_ops;
+            tcp_socket_ops_t m_config_sock_ops;
+            tcp_timing_t     m_config_timing;
 
             // user
-            void*           m_user;
-            tcp_callbacks_t m_user_callbacks;
+            void*                       m_on_connected_user;
+            tcp_user_on_connected_fn    m_on_connected;
+            void*                       m_on_disconnected_user;
+            tcp_user_on_disconnected_fn m_on_disconnected;
 
             // runtime
             bool        m_enabled;
@@ -142,26 +134,37 @@ namespace ncore
             u32         m_last_attempt_ms;
             u32         m_connect_start_ms;
             u32         m_backoff_ms;
+            u32         m_backoff_jitter_ms;
+            u32         m_backoff_attempts;
+
+            // scheduled send
+            byte m_scheduled_send_buffer[1024];
+            u32  m_scheduled_send_length;
 
             // receiving, framing state
-            void*        m_tcp_recv_ctx;
-            u16          m_tcp_recv_expected;
-            u16          m_tcp_recv_offset;
-            u8           m_tcp_recv_header[16]; // Must be at least sizeof(msg_hdr_t)
-            tcp_buffer_t m_tcp_recv_buf;
+            tcp_recv_plugin_t* m_tcp_recv_plugins[8];  // Max 8 plugins
+            void*              m_tcp_recv_plugin_ctx[8];
+            tcp_recv_plugin_t* m_tcp_recv_active_plugin;
+            u32                m_tcp_recv_expected;
+            u32                m_tcp_recv_offset;
+            u8                 m_tcp_recv_header[16];  // Must be at least sizeof(msg_hdr_t)
+            tcp_buffer_t       m_tcp_recv_buf;
         };
 
         // ------------------------------------------------------------
         // API
         // ------------------------------------------------------------
 
-        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port, void* recv_ctx = nullptr);
-        void set_user_callbacks(tcp_client_t& c, void* user, tcp_callbacks_t callbacks);
+        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port);
+        void register_plugin(tcp_client_t& c, tcp_recv_plugin_t* plugin);
+        void register_on_connected_callback(tcp_client_t& c, tcp_user_on_connected_fn on_connected, void* user_context);
+        void register_on_disconnected_callback(tcp_client_t& c, tcp_user_on_disconnected_fn on_disconnected, void* user_context);
+
         void connect(tcp_client_t& c);
         void disconnect(tcp_client_t& c);
         bool tick_tcp_client(nwifi::wifi_manager_t* wifi_mgr, tcp_client_t& c);
-        bool send(tcp_client_t& c, const void* data, u16 len);
-        bool scheduled_send(tcp_client_t& c, const void* data, u16 len);
+        bool send(tcp_client_t& c, const void* data, u32 len);
+        bool send_later(tcp_client_t& c, const void* data, u32 len);
 
         inline bool is_connected(const tcp_client_t& c) { return c.m_state == TCP_STATE_CONNECTED; }
 

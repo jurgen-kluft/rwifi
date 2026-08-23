@@ -25,35 +25,34 @@ namespace ncore
         // Static helpers
         // ------------------------------------------------------------
 
-        // Reads a u16 from the TCP stream in little-endian format.
-        // Returns false if not enough data is available to read.
-        static bool s_read_u16(tcp_client_t& c, u16* out)
-        {
-            if (c.m_config->m_sock_ops.m_available(c.m_socket) < 2)
-                return false;
-
-            u8 hdr[2];
-            c.m_config->m_sock_ops.m_read(c.m_socket, hdr, 2);
-            *out = (u16(hdr[1]) << 8) | hdr[0];
-            return true;
-        }
-
         static void s_enter_backoff(tcp_client_t& c)
         {
             c.m_last_state = c.m_state;
             c.m_state      = TCP_STATE_BACKOFF;
 
             u32 next = c.m_backoff_ms << 1;
-            if (next > c.m_config->m_timing.m_backoff_max_ms)
-                next = c.m_config->m_timing.m_backoff_max_ms;
+            if (next > c.m_config_timing.m_backoff_max_ms)
+                next = c.m_config_timing.m_backoff_max_ms;
 
             c.m_backoff_ms      = next;
-            c.m_last_attempt_ms = c.m_config->m_time_ops.m_millis();
+
+            u32 jitter = c.m_config_timing.m_backoff_jitter_ms;
+            if (jitter > 0)
+            {
+                const u32 rand_val = ((u32)ntimer::millis() & 0xFFF);
+                c.m_backoff_ms = c.m_backoff_ms - (jitter >> 1) + ((rand_val * jitter) >> 12);
+            }
+            else
+            {
+                c.m_backoff_jitter_ms = 0;
+            }
+
+            c.m_last_attempt_ms = c.m_config_time_ops.m_millis();
         }
 
         static void s_attempt_connect(tcp_client_t& c)
         {
-            u32 now = c.m_config->m_time_ops.m_millis();
+            u32 now = c.m_config_time_ops.m_millis();
             if ((now - c.m_last_attempt_ms) < c.m_backoff_ms)
                 return;
 
@@ -62,100 +61,129 @@ namespace ncore
             c.m_last_state       = c.m_state;
             c.m_state            = TCP_STATE_CONNECTING;
 
-            c.m_config->m_sock_ops.m_stop(c.m_socket);
-            c.m_config->m_sock_ops.m_connect(c.m_socket, c.m_ip, c.m_port);
+            c.m_config_sock_ops.m_stop(c.m_socket);
+            c.m_config_sock_ops.m_connect(c.m_socket, c.m_ip, c.m_port);
         }
 
         static void s_poll_connecting(tcp_client_t& c)
         {
-            if (c.m_config->m_sock_ops.m_connected(c.m_socket))
+            if (c.m_config_sock_ops.m_connected(c.m_socket))
             {
                 c.m_last_state        = c.m_state;
                 c.m_state             = TCP_STATE_CONNECTED;
-                c.m_backoff_ms        = c.m_config->m_timing.m_backoff_initial_ms;
+                c.m_backoff_ms        = c.m_config_timing.m_backoff_initial_ms;
                 c.m_tcp_recv_expected = 0;
                 c.m_tcp_recv_offset   = 0;
                 c.m_tcp_recv_buf      = {0, 0};
 
-                if (c.m_last_state == TCP_STATE_CONNECTING && c.m_user_callbacks.m_on_connected)
-                    c.m_user_callbacks.m_on_connected(c.m_user);
+                if (c.m_last_state == TCP_STATE_CONNECTING && c.m_on_connected != nullptr)
+                    c.m_on_connected(c.m_on_connected_user);
 
                 return;
             }
 
-            if ((c.m_config->m_time_ops.m_millis() - c.m_connect_start_ms) > c.m_config->m_timing.m_connect_timeout_ms)
+            if ((c.m_config_time_ops.m_millis() - c.m_connect_start_ms) > c.m_config_timing.m_connect_timeout_ms)
             {
-                c.m_config->m_sock_ops.m_stop(c.m_socket);
+                c.m_config_sock_ops.m_stop(c.m_socket);
                 s_enter_backoff(c);
             }
         }
 
         static void s_poll_backoff(tcp_client_t& c)
         {
-            if ((c.m_config->m_time_ops.m_millis() - c.m_last_attempt_ms) >= c.m_backoff_ms)
+            if ((c.m_config_time_ops.m_millis() - c.m_last_attempt_ms) >= c.m_backoff_ms)
             {
                 c.m_last_state = c.m_state;
+                if (c.m_backoff_attempts)
                 c.m_state      = TCP_STATE_DISCONNECTED;
             }
         }
 
         static void s_poll_connected(tcp_client_t& c)
         {
-            if (!c.m_config->m_sock_ops.m_connected(c.m_socket))
+            if (!c.m_config_sock_ops.m_connected(c.m_socket))
             {
-                if (c.m_tcp_recv_buf.m_buffer && c.m_config->m_recv_ops.m_abort)
-                    c.m_config->m_recv_ops.m_abort(c.m_tcp_recv_ctx);
+                if (c.m_tcp_recv_buf.m_buffer && c.m_tcp_recv_active_plugin != nullptr)
+                {
+                    if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
+                        c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin->m_recv_ctx);
+                    c.m_tcp_recv_active_plugin = nullptr;
+                    c.m_tcp_recv_expected      = 0;
+                    c.m_tcp_recv_offset        = 0;
+                }
 
                 // Notify the user of disconnection if we were previously connected
-                if (c.m_user_callbacks.m_on_disconnected)
-                    c.m_user_callbacks.m_on_disconnected(c.m_user);
+                if (c.m_on_disconnected)
+                    c.m_on_disconnected(c.m_on_disconnected_user);
 
                 c.m_tcp_recv_buf = {0, 0};
-                c.m_config->m_sock_ops.m_stop(c.m_socket);
+                c.m_config_sock_ops.m_stop(c.m_socket);
                 s_enter_backoff(c);
                 return;
             }
 
-            while (c.m_config->m_sock_ops.m_available(c.m_socket) > 0)
+            while (c.m_config_sock_ops.m_available(c.m_socket) > 0)
             {
+                msg_hdr_t* msg_hdr      = (msg_hdr_t*)c.m_tcp_recv_header;
+                const i32  msg_hdr_size = (i32)sizeof(msg_hdr_t);
+
                 if (c.m_tcp_recv_expected == 0)
                 {
-                    const i32 hdr_size = sizeof(msg_hdr_t);
-                    if (c.m_config->m_sock_ops.m_available(c.m_socket) <= hdr_size)
+                    if (c.m_config_sock_ops.m_available(c.m_socket) < msg_hdr_size)
                         return;
 
-                    if (c.m_config->m_sock_ops.m_read(c.m_socket, c.m_tcp_recv_header, hdr_size) < 0)
+                    if (c.m_config_sock_ops.m_read(c.m_socket, msg_hdr, msg_hdr_size) < 0)
                     {
-                        if (c.m_config->m_recv_ops.m_abort)
-                            c.m_config->m_recv_ops.m_abort(c.m_tcp_recv_ctx);
-                        c.m_tcp_recv_expected = 0;
+                        if (c.m_tcp_recv_active_plugin != nullptr && c.m_tcp_recv_active_plugin->m_abort != nullptr)
+                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin->m_recv_ctx);
+                        c.m_tcp_recv_active_plugin = nullptr;
+                        c.m_tcp_recv_expected      = 0;
+                        c.m_tcp_recv_offset        = 0;
                         return;
                     }
 
+                    // Plugin: Which plugin will handle this message?
+                    // Request a buffer for the payload from the plugin.
+                    // The last plugin in the array is one that always returns a buffer, so we
+                    // will always have a buffer to receive the payload. However, that plugin
+                    // is a "catch-all and ignore" plugin that will handle any message type that
+                    // is not handled by the other plugins.
                     c.m_tcp_recv_offset = 0;
-                    c.m_tcp_recv_buf    = c.m_config->m_recv_ops.m_acquire(c.m_tcp_recv_ctx, c.m_tcp_recv_header);
+                    for (u32 plugin_index = 0; plugin_index < 8; ++plugin_index)
+                    {
+                        tcp_recv_plugin_t* plugin = c.m_tcp_recv_plugins[plugin_index];
+                        if (plugin == nullptr)
+                            continue;
+                        if (plugin->m_acquire(plugin->m_recv_ctx, msg_hdr, &c.m_tcp_recv_buf))
+                        {
+                            c.m_tcp_recv_active_plugin = plugin;
+                            c.m_tcp_recv_expected      = msg_hdr->payload_len;
+                            break;
+                        }
+                    }
 
                     if (!c.m_tcp_recv_buf.m_buffer)
                     {
-                        if (c.m_config->m_recv_ops.m_abort)
-                            c.m_config->m_recv_ops.m_abort(c.m_tcp_recv_ctx);
-
+                        if (c.m_tcp_recv_active_plugin != nullptr && c.m_tcp_recv_active_plugin->m_abort)
+                        {
+                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin->m_recv_ctx);
+                            c.m_tcp_recv_active_plugin = nullptr;
+                        }
                         c.m_tcp_recv_expected = 0;
                         return;
                     }
                 }
 
-                const u16 remaining = c.m_tcp_recv_expected - c.m_tcp_recv_offset;
-                const u16 avail     = (u16)c.m_config->m_sock_ops.m_available(c.m_socket);
-                const u16 chunk     = remaining < avail ? remaining : avail;
+                const u32 remaining = c.m_tcp_recv_expected - c.m_tcp_recv_offset;
+                const u32 avail     = (u32)c.m_config_sock_ops.m_available(c.m_socket);
+                const u32 chunk     = remaining < avail ? remaining : avail;
 
-                c.m_config->m_sock_ops.m_read(c.m_socket, c.m_tcp_recv_buf.m_buffer + c.m_tcp_recv_offset, chunk);
+                c.m_config_sock_ops.m_read(c.m_socket, c.m_tcp_recv_buf.m_buffer + c.m_tcp_recv_offset, chunk);
                 c.m_tcp_recv_offset += chunk;
 
                 if (c.m_tcp_recv_offset == c.m_tcp_recv_expected)
                 {
-                    c.m_config->m_recv_ops.m_commit(c.m_tcp_recv_ctx, c.m_tcp_recv_header, c.m_tcp_recv_buf);
-
+                    c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin->m_recv_ctx, msg_hdr, c.m_tcp_recv_buf);
                     c.m_tcp_recv_expected = 0;
                     c.m_tcp_recv_offset   = 0;
                     c.m_tcp_recv_buf      = tcp_buffer_t{nullptr, 0};
@@ -171,26 +199,27 @@ namespace ncore
         {
             setup(&config->m_time_ops);
             setup(&config->m_timing);
-
-            config->m_recv_ops.m_acquire = nullptr;
-            config->m_recv_ops.m_commit  = nullptr;
-            config->m_recv_ops.m_abort   = nullptr;
-
             void* socket = setup(&config->m_sock_ops);
-
             return socket;
         }
 
         // ------------------------------------------------------------
         // Public API
         // ------------------------------------------------------------
-        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port, void* recv_ctx)
+        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port)
         {
             c.m_socket = socket;
             c.m_ip     = ip;
             c.m_port   = port;
 
-            c.m_config = config;
+            c.m_config_time_ops = config->m_time_ops;
+            c.m_config_sock_ops = config->m_sock_ops;
+            c.m_config_timing   = config->m_timing;
+
+            c.m_on_connected_user    = nullptr;
+            c.m_on_connected         = nullptr;
+            c.m_on_disconnected_user = nullptr;
+            c.m_on_disconnected      = nullptr;
 
             c.m_enabled          = false;
             c.m_last_state       = TCP_STATE_INACTIVE;
@@ -199,16 +228,41 @@ namespace ncore
             c.m_connect_start_ms = 0;
             c.m_backoff_ms       = config->m_timing.m_backoff_initial_ms;
 
-            c.m_tcp_recv_ctx         = recv_ctx;
-            c.m_tcp_recv_expected    = 0;
-            c.m_tcp_recv_offset      = 0;
-            c.m_tcp_recv_buf         = {0, 0};
+            for (u32 i = 0; i < 8; ++i)
+            {
+                c.m_tcp_recv_plugins[i]    = nullptr;
+                c.m_tcp_recv_plugin_ctx[i] = nullptr;
+            }
+
+            c.m_tcp_recv_active_plugin = nullptr;
+            c.m_tcp_recv_expected      = 0;
+            c.m_tcp_recv_offset        = 0;
+            c.m_tcp_recv_buf           = {nullptr, 0};
         }
 
-        void set_user_callbacks(tcp_client_t& c, void* user, tcp_callbacks_t callbacks)
+        void register_plugin(tcp_client_t& c, tcp_recv_plugin_t* plugin)
         {
-            c.m_user           = user;
-            c.m_user_callbacks = callbacks;
+            for (u32 i = 0; i < 8; ++i)
+            {
+                if (c.m_tcp_recv_plugins[i] == nullptr)
+                {
+                    c.m_tcp_recv_plugins[i]    = plugin;
+                    c.m_tcp_recv_plugin_ctx[i] = &c;
+                    return;
+                }
+            }
+        }
+
+        void register_on_connected_callback(tcp_client_t& c, tcp_user_on_connected_fn on_connected, void* user_context)
+        {
+            c.m_on_connected_user = user_context;
+            c.m_on_connected      = on_connected;
+        }
+
+        void register_on_disconnected_callback(tcp_client_t& c, tcp_user_on_disconnected_fn on_disconnected, void* user_context)
+        {
+            c.m_on_disconnected_user = user_context;
+            c.m_on_disconnected      = on_disconnected;
         }
 
         static void activate(tcp_client_t& c)
@@ -224,17 +278,23 @@ namespace ncore
             if (!c.m_enabled)
                 return;
 
-            if (c.m_tcp_recv_buf.m_buffer != nullptr && c.m_config->m_recv_ops.m_abort)
-                c.m_config->m_recv_ops.m_abort(c.m_tcp_recv_ctx);
+            if (c.m_tcp_recv_buf.m_buffer != nullptr && c.m_tcp_recv_active_plugin != nullptr)
+            {
+                if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
+                    c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin->m_recv_ctx);
+                c.m_tcp_recv_active_plugin = nullptr;
+                c.m_tcp_recv_expected      = 0;
+                c.m_tcp_recv_offset        = 0;
+            }
 
             c.m_tcp_recv_buf = {0, 0};
 
             if (c.m_state == TCP_STATE_CONNECTED)
             {
-                if (c.m_user_callbacks.m_on_disconnected)
-                    c.m_user_callbacks.m_on_disconnected(c.m_user);
+                if (c.m_on_disconnected)
+                    c.m_on_disconnected(c.m_on_disconnected_user);
 
-                c.m_config->m_sock_ops.m_stop(c.m_socket);
+                c.m_config_sock_ops.m_stop(c.m_socket);
             }
 
             c.m_last_state = c.m_state;
@@ -259,51 +319,33 @@ namespace ncore
             if (!tcp.m_enabled)
                 return false;
 
-            if (nwifi::is_connected(*wifi_mgr))
+            switch (tcp.m_state)
             {
-                // If Wi-Fi just recovered or is active, allow TCP to run
-                if (tcp.m_state == ntcp::TCP_STATE_INACTIVE)
-                {
-                    ntcp::activate(tcp);  // Boot up the TCP connection engine
-                }
+                case TCP_STATE_DISCONNECTED: s_attempt_connect(tcp); break;
+                case TCP_STATE_CONNECTING: s_poll_connecting(tcp); break;
+                case TCP_STATE_CONNECTED: s_poll_connected(tcp); break;
+                case TCP_STATE_BACKOFF: s_poll_backoff(tcp); break;
+            }
 
-                switch (tcp.m_state)
-                {
-                    case TCP_STATE_DISCONNECTED: s_attempt_connect(tcp); break;
-                    case TCP_STATE_CONNECTING: s_poll_connecting(tcp); break;
-                    case TCP_STATE_CONNECTED: s_poll_connected(tcp); break;
-                    case TCP_STATE_BACKOFF: s_poll_backoff(tcp); break;
-                }
-            }
-            else
-            {
-                // Wi-Fi is down, backing off, or connecting.
-                // Immediately suspend and reset TCP client state to protect resources
-                if (tcp.m_state != ntcp::TCP_STATE_INACTIVE)
-                {
-                    deactivate(tcp);
-                }
-            }
             return tcp.m_state == TCP_STATE_CONNECTED;
         }
 
-        bool send(tcp_client_t& c, const void* data, u16 len)
+        bool send(tcp_client_t& c, const void* data, u32 len)
         {
             if (c.m_state != TCP_STATE_CONNECTED)
                 return false;
-            c.m_config->m_sock_ops.m_write(c.m_socket, data, len);
+            c.m_config_sock_ops.m_write(c.m_socket, data, len);
             return true;
         }
 
-        bool scheduled_send(tcp_client_t& c, const void* data, u16 len)
+        bool send_later(tcp_client_t& c, const void* data, u32 len)
         {
-            // TODO implement a scheduled send mechanism that queues data to be 
-            // sent in the main loop instead of sending it directly from the callback context. 
-            // This will help avoid potential issues with sending data from interrupt or callback 
+            // TODO implement a scheduled send mechanism that queues data to be
+            // sent in the main loop instead of sending it directly from a callback context.
+            // This will help avoid potential issues with sending data from interrupt or callback
             // contexts, which can lead to unexpected behavior or crashes.
             return false;
         }
-
 
     }  // namespace ntcp
 }  // namespace ncore
