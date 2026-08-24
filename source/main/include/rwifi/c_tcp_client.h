@@ -1,18 +1,16 @@
-#ifndef __ARDUINO_CORE_NODE_H__
-#define __ARDUINO_CORE_NODE_H__
+#ifndef __RWIFI_TCP_CLIENT_H__
+#define __RWIFI_TCP_CLIENT_H__
 #include "rcore/c_target.h"
 #ifdef USE_PRAGMA_ONCE
 #    pragma once
 #endif
 
+#include "rwifi/c_wifi_mgr.h"
+#include "rwifi/c_protocol.h"
+
 namespace ncore
 {
-    namespace nwifi
-    {
-        struct wifi_manager_t;
-    }
-
-    namespace ntcp
+    namespace nnet
     {
         enum tcp_state_t
         {
@@ -42,10 +40,10 @@ namespace ncore
             u32 m_length;
         };
 
-        typedef bool (*tcp_recv_acquire_fn)(void* ctx, msg_hdr_t* hdr, tcp_buffer_t* out);
-        typedef void (*tcp_recv_commit_fn)(void* ctx, msg_hdr_t* hdr, tcp_buffer_t buffer);
-        typedef void (*tcp_recv_abort_fn)(void* ctx);
-        typedef void (*tcp_recv_complete_fn)(u32 msg_type, u32 data_type, u32 data_size, byte const* data_ptr, void* user_context);
+        typedef bool (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, tcp_client_t* client, msg_hdr_t* hdr, tcp_buffer_t* out);
+        typedef void (*tcp_recv_commit_fn)(tcp_recv_plugin_t* plugin, tcp_client_t* client, msg_hdr_t* hdr, tcp_buffer_t buffer);
+        typedef void (*tcp_recv_abort_fn)(tcp_recv_plugin_t* plugin, tcp_client_t* client);
+        typedef void (*tcp_recv_complete_fn)(void* on_complete_context, u32 data_type, u32 data_size, byte const* data_ptr);
 
         // ------------------------------------------------------------
         // Ops groupings
@@ -72,6 +70,7 @@ namespace ncore
 
         struct tcp_recv_plugin_t
         {
+            void*                m_plugin_data;
             tcp_recv_acquire_fn  m_acquire;
             tcp_recv_commit_fn   m_commit;
             tcp_recv_abort_fn    m_abort;
@@ -162,13 +161,13 @@ namespace ncore
 
         void connect(tcp_client_t& c);
         void disconnect(tcp_client_t& c);
-        bool tick_tcp_client(nwifi::wifi_manager_t* wifi_mgr, tcp_client_t& c);
+        bool tick_tcp_client(wifi_manager_t* wifi_mgr, tcp_client_t& c);
         bool send(tcp_client_t& c, const void* data, u32 len);
         bool send_later(tcp_client_t& c, const void* data, u32 len);
 
         inline bool is_connected(const tcp_client_t& c) { return c.m_state == TCP_STATE_CONNECTED; }
 
-    }  // namespace ntcp
+    }  // namespace nnet
 }  // namespace ncore
 
-#endif  // __ARDUINO_CORE_NODE_H__
+#endif  // __RWIFI_TCP_CLIENT_H__

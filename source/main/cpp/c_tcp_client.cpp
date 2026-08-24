@@ -19,7 +19,7 @@
 
 namespace ncore
 {
-    namespace ntcp
+    namespace nnet
     {
         // ------------------------------------------------------------
         // Static helpers
@@ -314,7 +314,7 @@ namespace ncore
         }
 
         // returns true if the client is connected, false otherwise
-        bool tick_tcp_client(nwifi::wifi_manager_t* wifi_mgr, tcp_client_t& tcp)
+        bool tick_tcp_client(nnet::wifi_manager_t* wifi_mgr, tcp_client_t& tcp)
         {
             if (!tcp.m_enabled)
                 return false;

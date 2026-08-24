@@ -2,7 +2,7 @@
 
 #    include "Arduino.h"
 
-//#    include "rwifi/c_ethernet.h"
+// #    include "rwifi/c_ethernet.h"
 #    include "WiFi.h"
 
 #    ifdef TARGET_ESP8266
@@ -18,7 +18,7 @@
 
 namespace ncore
 {
-    namespace nwifi
+    namespace nnet
     {
         state_wifi_t gWiFiState;
 
@@ -32,11 +32,11 @@ namespace ncore
             if (load_cache)
             {
                 ncore::nlog::println("loading WiFi cache from EEPROM");
-                ncore::neeprom::load((byte*)&state->WiFi->m_cache, sizeof(ncore::nwifi::cache_t));
+                ncore::neeprom::load((byte*)&state->WiFi->m_cache, sizeof(ncore::nnet::cache_t));
                 {
                     const u32 crc              = state->WiFi->m_cache.m_crc;
                     state->WiFi->m_cache.m_crc = 0;
-                    if (crc != neeprom::crc32((const byte*)&state->WiFi->m_cache, sizeof(nwifi::cache_t)))
+                    if (crc != neeprom::crc32((const byte*)&state->WiFi->m_cache, sizeof(nnet::cache_t)))
                     {
                         ncore::nlog::println(" WiFi cache in EEPROM is corrupted (CRC mismatch)");
                         state->WiFi->m_cache.reset();
@@ -57,8 +57,8 @@ namespace ncore
         void disconnect() { WiFi.disconnect(); }
         void disconnect_AP(bool wifioff) { WiFi.softAPdisconnect(wifioff); }
 
-        IPAddress_t get_IP(state_t* state) 
-        { 
+        IPAddress_t get_IP(state_t* state)
+        {
             IPAddress_t ip;
             IPAddress_t::from_arduino(ip, WiFi.localIP());
             return ip;
@@ -70,9 +70,9 @@ namespace ncore
             return state->MACAddress;
         }
 
-        s32 get_RSSI(state_t* state) { return WiFi.RSSI(); }
-        void set_DNS(const IPAddress_t& dns) 
-        { 
+        s32  get_RSSI(state_t* state) { return WiFi.RSSI(); }
+        void set_DNS(const IPAddress_t& dns)
+        {
             IPAddress arduino_dns;
             IPAddress_t::to_arduino(arduino_dns, dns);
             WiFi.setDNS(arduino_dns);
@@ -86,7 +86,7 @@ namespace ncore
         // from: https://github.com/softplus/esp8266-wifi-timing
 
         // do a fast-connect, if we can, return true if ok
-        void fast_connect_fast(const char* ssid, const char* auth, nwifi::cache_t const& cache)
+        void fast_connect_fast(const char* ssid, const char* auth, nnet::cache_t const& cache)
         {
             WiFi.config(cache.ip_address, cache.ip_gateway, cache.ip_mask);
             WiFi.begin(ssid, auth, cache.wifi_channel, cache.wifi_bssid, true);
@@ -124,17 +124,17 @@ namespace ncore
 
                     WiFi.macAddress(state->MACAddress);
 
-                    nwifi::cache_t& cache = state->WiFi->m_cache;
-                    cache.ip_address      = WiFi.localIP();
-                    cache.ip_gateway      = WiFi.gatewayIP();
-                    cache.ip_mask         = WiFi.subnetMask();
-                    cache.ip_dns1         = WiFi.dnsIP(0);
-                    cache.ip_dns2         = WiFi.dnsIP(1);
+                    nnet::cache_t& cache = state->WiFi->m_cache;
+                    cache.ip_address     = WiFi.localIP();
+                    cache.ip_gateway     = WiFi.gatewayIP();
+                    cache.ip_mask        = WiFi.subnetMask();
+                    cache.ip_dns1        = WiFi.dnsIP(0);
+                    cache.ip_dns2        = WiFi.dnsIP(1);
                     WiFi.BSSID(cache.wifi_bssid);
                     cache.wifi_channel = WiFi.channel();
                     cache.m_crc        = 0;
-                    cache.m_crc        = neeprom::crc32((const byte*)&cache, sizeof(nwifi::cache_t));
-                    neeprom::save((const byte*)&cache, sizeof(nwifi::cache_t));
+                    cache.m_crc        = neeprom::crc32((const byte*)&cache, sizeof(nnet::cache_t));
+                    neeprom::save((const byte*)&cache, sizeof(nnet::cache_t));
                 }
                 return true;
             }
@@ -180,7 +180,7 @@ namespace ncore
             ncore::nlog::printfln("  RSSI: %d dBm", va_t(WiFi.RSSI()));
         }
 
-    }  // namespace nwifi
+    }  // namespace nnet
 }  // namespace ncore
 
 #else
@@ -189,7 +189,7 @@ namespace ncore
 
 namespace ncore
 {
-    namespace nwifi
+    namespace nnet
     {
         void init_state(state_t* state) { CC_UNUSED(state); }
         void connect(state_t* state) { CC_UNUSED(state); }
@@ -220,7 +220,7 @@ namespace ncore
 
         void print_connection_info(state_t* state) { CC_UNUSED(state); }
 
-    }  // namespace nwifi
+    }  // namespace nnet
 }  // namespace ncore
 
 #endif

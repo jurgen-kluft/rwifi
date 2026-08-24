@@ -8,7 +8,7 @@
 
 namespace ncore
 {
-    namespace nwifi
+    namespace nnet
     {
         bool load_cache_from_eeprom(wifi_cache_t& cache)
         {
@@ -30,7 +30,7 @@ namespace ncore
                 }
             }
         }
-    }  // namespace nwifi
+    }  // namespace nnet
 }  // namespace ncore
 
 #    ifdef TARGET_ESP32
@@ -46,7 +46,7 @@ namespace ncore
 
 namespace ncore
 {
-    namespace nwifi
+    namespace nnet
     {
         void init_wifi_config(wifi_config_t& config, const char* ssid, const char* password, u32 init_backoff_ms, u32 max_backoff_ms, f32 backoff_multiplier, f32 jitter_percentage)
         {
@@ -354,7 +354,7 @@ namespace ncore
             // ncore::nlog::printfln("  RSSI: %d dBm", va_list_t(va_t(m.m_rssi)));
         }
 
-    }  // namespace nwifi
+    }  // namespace nnet
 }  // namespace ncore
 
 #    endif
@@ -365,7 +365,7 @@ namespace ncore
 
 namespace ncore
 {
-    namespace nwifi
+    namespace nnet
     {
         // Global instance pointer for Arduino event callbacks
         static wifi_manager_t*  g_wifi_mgr = NULL;
@@ -597,7 +597,7 @@ namespace ncore
             ncore::nlog::printfln("  RSSI: %d dBm", va_t(m.m_rssi));
         }
 
-    }  // namespace nwifi
+    }  // namespace nnet
 }  // namespace ncore
 
 #    endif

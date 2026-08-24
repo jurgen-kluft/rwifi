@@ -11,7 +11,7 @@
 
 namespace ncore
 {
-    namespace nwifi
+    namespace nnet
     {
         void init_state(state_t* state, bool load_cache);
 
@@ -25,7 +25,7 @@ namespace ncore
 
         void print_connection_info(state_t* state);
 
-    }  // namespace nwifi
+    }  // namespace nnet
 }  // namespace ncore
 
 #endif  // __ARDUINO_CORE_WIFI_H__

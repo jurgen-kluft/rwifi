@@ -7,7 +7,7 @@
 
 namespace ncore
 {
-    namespace nwifi
+    namespace nnet
     {
         enum wifi_state_t
         {
@@ -86,7 +86,7 @@ namespace ncore
         u8 const* get_mac_address(wifi_manager_t& m);
         void      print_info(wifi_manager_t& m);
 
-    }  // namespace nwifi
+    }  // namespace nnet
 }  // namespace ncore
 
 #endif  // __RWIFI_WIFI_MANAGER_H__

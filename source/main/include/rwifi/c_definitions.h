@@ -14,13 +14,13 @@ namespace ncore
         struct config_t;
     }
 
-    namespace ntcp
+    namespace nnet
     {
-        typedef i32 client_t;
-    }
+        namespace ntcp
+        {
+            typedef i32 client_t;
+        }
 
-    namespace nwifi
-    {
         // @see: https://www.arduino.cc/en/Reference/WiFi
 
         typedef s32 status_t;
@@ -39,14 +39,14 @@ namespace ncore
 
         struct cache_t
         {
-            u32 m_crc;
-            u32 ip_address;
-            u32 ip_gateway;
-            u32 ip_mask;
-            u32 ip_dns1;
-            u32 ip_dns2;
-            u16 wifi_channel;
-            u8  wifi_bssid[6];
+            u32  m_crc;
+            u32  ip_address;
+            u32  ip_gateway;
+            u32  ip_mask;
+            u32  ip_dns1;
+            u32  ip_dns2;
+            u16  wifi_channel;
+            u8   wifi_bssid[6];
             void reset();
         };
 
@@ -54,13 +54,14 @@ namespace ncore
         {
             byte mB0, mB1, mB2, mB3, mB4, mB5, mB6, mB7;
         };
-    }  // namespace nwifi
+    }  // namespace nnet
 
     struct state_wifi_t
     {
-        nwifi::status_t m_status;
-        nwifi::cache_t  m_cache;
+        nnet::status_t m_status;
+        nnet::cache_t  m_cache;
     };
+
 }  // namespace ncore
 
 #endif  // __ARDUINO_CORE_WIFI_DEFINITIONS_H__
