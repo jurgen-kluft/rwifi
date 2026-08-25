@@ -1,18 +1,29 @@
 # rwifi
 
-This library provides a 'node' for connecting to a WiFi network and Remote Server. It simplifies the process of connecting to a WiFi network by handling the connection logic and providing a simple interface for users.
+The main API this package provides is a TCP client that can be used to connect to a TCP server. The TCP client is designed to be used in an embedded environment, and as such, it is designed to be non-blocking and to use a small amount of memory.
 
-It also uses non-volatile storage to load/save a configuration that can be setup by the user, it should provide the SSID and password, AP SSID and AP Password, remote server address and port, and any additional parameters that the application may need.
+## Setup
+        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port);
+        
+## Plugins
 
-The boot process is as follows:
-1. Node checks if there is a saved configuration in non-volatile storage otherwise a default configuration is used.
-2. It attempts to connect to the specified WiFi network using the provided SSID and password, and subsequently tries to connect to the remote server and port.
-3. If the connections are successful, it proceeds with normal operation.
-4. If any connection fails (e.g., incorrect credentials, network not available), it starts a WiFi Access Point (AP) with the specified AP SSID and AP Password.
-5. Users can connect to this AP using a smartphone or computer to send a TCP message in ASCII format to configure the WiFi credentials and other parameters. 
-6. The configuration message should be a single line of text with key-value pairs separated by commas.
+You can create and register plugins to handle incoming data. A plugin handles a couple of things:
 
-Example message format:
-```
-ssid=MyWiFiNetwork, password=MyPassword, ap_ssid=MyAP, ap_password=MyAPPassword, remote_server=10.0.0.42, remote_port=31337
-```
+- acquire; this is called by the TCP loop when it has received the header of a message and wants to know which plugin will handle the message. The plugin can return true to indicate that it will handle the message, or false to indicate that it will not handle the message.
+It also has to prepare a buffer to receive the message. 
+- commit; this is called by the TCP loop when it has received the entire message and calls the plugin to commit the message.
+- abort; This is called whenever the TCP loop identifies an error and wants to abort the message. The plugin can use this to clean up any resources it has allocated for the message.
+- on complete; This callback is registered by the user of the plugin, and is called by the plugin when it has completed processing a message.
+        
+## Connection Management
+
+The user can call connect() to initiate a connection to the server, and disconnect() to close the connection. The user can also call is_connected() to check if the client is currently connected to the server.
+
+## Tick
+
+The user must call tick() in the main loop to allow the TCP client to process incoming data and manage the connection. The tick() function will return true if the client is connected, and false if it is not connected.
+
+## Send Data
+
+The TCP client provides two functions to send data to the server: send() and send_later(). The send() function will send the data immediately, while the send_later() function will schedule the data to be sent at a later time. The user can call tick() to allow the TCP client to process the scheduled data and send it to the server.
+
