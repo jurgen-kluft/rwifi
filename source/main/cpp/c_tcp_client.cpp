@@ -106,7 +106,7 @@ namespace ncore
                 if (c.m_tcp_recv_buf.m_buffer && c.m_tcp_recv_active_plugin != nullptr)
                 {
                     if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
-                        c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin, &c);
+                        c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                     c.m_tcp_recv_active_plugin = nullptr;
                     c.m_tcp_recv_expected      = 0;
                     c.m_tcp_recv_offset        = 0;
@@ -135,7 +135,7 @@ namespace ncore
                     if (c.m_config_sock_ops.m_read(c.m_socket, msg_hdr, msg_hdr_size) < 0)
                     {
                         if (c.m_tcp_recv_active_plugin != nullptr && c.m_tcp_recv_active_plugin->m_abort != nullptr)
-                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin, &c);
+                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                         c.m_tcp_recv_active_plugin = nullptr;
                         c.m_tcp_recv_expected      = 0;
                         c.m_tcp_recv_offset        = 0;
@@ -154,7 +154,7 @@ namespace ncore
                         tcp_recv_plugin_t* plugin = c.m_tcp_recv_plugins[plugin_index];
                         if (plugin == nullptr)
                             continue;
-                        if (plugin->m_acquire(plugin, &c, msg_hdr, &c.m_tcp_recv_buf))
+                        if (plugin->m_acquire(plugin, msg_hdr, &c.m_tcp_recv_buf))
                         {
                             c.m_tcp_recv_active_plugin = plugin;
                             c.m_tcp_recv_expected      = msg_hdr->payload_len;
@@ -166,7 +166,7 @@ namespace ncore
                     {
                         if (c.m_tcp_recv_active_plugin != nullptr && c.m_tcp_recv_active_plugin->m_abort)
                         {
-                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin, &c);
+                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                             c.m_tcp_recv_active_plugin = nullptr;
                         }
                         c.m_tcp_recv_expected = 0;
@@ -183,7 +183,7 @@ namespace ncore
 
                 if (c.m_tcp_recv_offset == c.m_tcp_recv_expected)
                 {
-                    c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin, &c, msg_hdr, c.m_tcp_recv_buf);
+                    c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin, msg_hdr, c.m_tcp_recv_buf);
                     c.m_tcp_recv_expected = 0;
                     c.m_tcp_recv_offset   = 0;
                     c.m_tcp_recv_buf      = tcp_buffer_t{nullptr, 0};
@@ -281,7 +281,7 @@ namespace ncore
             if (c.m_tcp_recv_buf.m_buffer != nullptr && c.m_tcp_recv_active_plugin != nullptr)
             {
                 if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
-                    c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin, &c);
+                    c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                 c.m_tcp_recv_active_plugin = nullptr;
                 c.m_tcp_recv_expected      = 0;
                 c.m_tcp_recv_offset        = 0;

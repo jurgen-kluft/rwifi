@@ -45,63 +45,100 @@ namespace ncore
         // 888    888  d8888888888 888   Y8888 888  .d88P Y88b  d88P 888    888  d8888888888 888   Y88b  888
         // 888    888 d88P     888 888    Y888 8888888P"   "Y8888P"  888    888 d88P     888 888    Y88b 8888888888
 
-        // --- MSG TYPE 0x01: Handshake (ESP32 -> Mac) ---
-        struct payload_handshake_t
+        // Handshake mechanism:
+        // 1. ESP32 connects to the Mac over TCP, the Mac sends a handshake message (MSG_TYPE_HANDSHAKE_INITIATE) to the ESP32.
+        // 2. The ESP32 receives the handshake message, processes it, and sends back a handshake acknowledgment 
+        //    (MSG_TYPE_HANDSHAKE_ACK) to the Mac with its public key and other information.
+        // 3. The Mac receives the handshake acknowledgment, processes it, and sends back a handshake final acknowledgment 
+        //    (MSG_TYPE_HANDSHAKE_FINAL_ACK) to the ESP32.
+
+        #define MSG_TYPE_HANDSHAKE_INITIATE 0x01
+        #define MSG_TYPE_HANDSHAKE_ACK 0x02
+        #define MSG_TYPE_HANDSHAKE_FINAL_ACK 0x03
+
+        // --- MSG TYPE 0x01: Handshake Initiate (Mac -> ESP32) ---
+        struct handshake_initiate_t : public msg_hdr_t
+        {
+        };
+
+        // --- MSG TYPE 0x02: Handshake Ack (ESP32 -> Mac) ---
+        struct handshake_ack_t : public msg_hdr_t
         {
             u8 mac_address[6];
             u8 reserved0[58];
         };
 
-        // --- MSG TYPE 0x02: Handshake Ack (Mac -> ESP32) ---
-        struct handshake_ack_t : public msg_hdr_t
+        // --- MSG TYPE 0x03: Handshake Final Ack (Mac -> ESP32) ---
+        struct handshake_final_ack_t : public msg_hdr_t
         {
             u32 status;  // 0x01 = Approved, 0x00 = Denied
         };
 
         // hand-shake plugin: handles the initial handshake with the Mac, including public key exchange and authentication
         static byte s_handshake_buffer[8];
-        bool        handshake_acquire_fn(tcp_recv_plugin_t* plugin, tcp_client_t* client, msg_hdr_t* hdr, tcp_buffer_t* out)
+        bool        handshake_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t* out)
         {
-            if (hdr->msg_type != 0x02)
-                return false;  // Not a handshake ack message
+            if (hdr->msg_type != MSG_TYPE_HANDSHAKE_INITIATE)
+                return false;  // Not a handshake initiate message
 
-            ASSERT(hdr->payload_len == sizeof(handshake_ack_t));
+            ASSERT(hdr->payload_len == 0);  // Handshake initiate has no payload
 
             out->m_buffer = s_handshake_buffer;
-            out->m_length = hdr->payload_len;  // Should be sizeof(handshake_ack_t)
+            out->m_length = 0; 
 
             return true;  // Handled handshake ack message
         }
 
-        void handshake_commit_fn(tcp_recv_plugin_t* plugin, tcp_client_t* client, msg_hdr_t* hdr, tcp_buffer_t buffer)
+        void handshake_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t buffer)
         {
             // Call the user-defined callback to indicate handshake completion
             // The user should process the handshake message, e.g., verify public key, authenticate, etc.
             // Then when everything is Ok, it should send back a handshake acknowledgment to the Remote.
-            if (hdr->msg_type != 0x02)
-                return;  // Not a handshake ack message
+            if (hdr->msg_type != MSG_TYPE_HANDSHAKE_INITIATE)
+                return;  // Not a handshake initiate message
 
-            handshake_ack_t* handshake_ack = (handshake_ack_t*)buffer.m_buffer;
-            if (plugin->m_on_complete && handshake_ack->status == 0x01)
+            if (hdr->msg_type == MSG_TYPE_HANDSHAKE_INITIATE)
             {
-                plugin->m_on_complete(plugin->m_on_complete_ctx, hdr->msg_type, buffer.m_length, buffer.m_buffer);
+                // Prepare the handshake ack message
+                handshake_ack_t ack_msg;
+                ack_msg.magic       = 0xF00D;
+                ack_msg.msg_type    = MSG_TYPE_HANDSHAKE_ACK;
+                ack_msg.payload_len = sizeof(handshake_ack_t) - sizeof(msg_hdr_t);
+                ack_msg.checksum    = 0;  // No checksum 
+
+                // Fill in the MAC address (for example, using a placeholder here)
+                u8 mac[6];
+                g_memcpy(ack_msg.mac_address, mac, sizeof(mac));
+
+                // Send the handshake ack message back to the Mac
+                nnet::send_later(plugin->m_client, (byte*)&ack_msg, sizeof(handshake_ack_t));
+            }
+            else if (hdr->msg_type == MSG_TYPE_HANDSHAKE_FINAL_ACK)
+            {
+                // Process the final ack message from the Mac
+                handshake_final_ack_t* final_ack = (handshake_final_ack_t*)buffer.m_buffer;
+                if (plugin->m_on_complete)
+                {
+                    const u32 success = (final_ack->status == 0x01) ? 1 : 0;
+                    plugin->m_on_complete(plugin->m_on_complete_ctx, success, 0, nullptr);
+                }
             }
         }
 
-        void handshake_abort_fn(tcp_recv_plugin_t* plugin, tcp_client_t* client)
+        void handshake_abort_fn(tcp_recv_plugin_t* plugin)
         {
             // Handle any cleanup or state reset if the handshake is aborted
         }
 
-        tcp_recv_plugin_t* new_handshake_plugin()
+        tcp_recv_plugin_t* new_handshake_plugin(tcp_recv_complete_fn on_complete, void* on_complete_ctx)
         {
             tcp_recv_plugin_t* plugin = new tcp_recv_plugin_t();
             plugin->m_plugin_data     = nullptr;
             plugin->m_acquire         = handshake_acquire_fn;
             plugin->m_commit          = handshake_commit_fn;
             plugin->m_abort           = handshake_abort_fn;
-            plugin->m_on_complete_ctx = nullptr;
-            plugin->m_on_complete     = nullptr;
+            plugin->m_on_complete_ctx = on_complete_ctx;
+            plugin->m_on_complete     = on_complete;
 
             return plugin;
         }
@@ -154,7 +191,7 @@ namespace ncore
             u32   m_data_type;           // Remember data type
         };
 
-        bool download_acquire_fn(tcp_recv_plugin_t* plugin, tcp_client_t* client, msg_hdr_t* in_hdr, tcp_buffer_t* out_buffer)
+        bool download_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, tcp_buffer_t* out_buffer)
         {
             if (in_hdr->msg_type != 0x10 && in_hdr->msg_type != 0x11)
                 return false;  // Not a download message
@@ -182,7 +219,7 @@ namespace ncore
             return true;  // Handled download message
         }
 
-        void download_commit_fn(tcp_recv_plugin_t* plugin, tcp_client_t* client, msg_hdr_t* hdr, tcp_buffer_t buffer)
+        void download_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t buffer)
         {
             if (hdr->msg_type == 0x10)
             {
@@ -226,7 +263,7 @@ namespace ncore
             }
         }
 
-        void download_abort_fn(tcp_recv_plugin_t* plugin, tcp_client_t* client)
+        void download_abort_fn(tcp_recv_plugin_t* plugin)
         {
             // Handle any cleanup or state reset if the handshake is aborted
             download_plugin_data_t* download_data = (download_plugin_data_t*)plugin->m_plugin_data;
