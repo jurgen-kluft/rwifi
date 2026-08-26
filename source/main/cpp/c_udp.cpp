@@ -36,50 +36,53 @@ namespace ncore
                 u16 m_flags;
             };
         }  // namespace nudp
+    }  // namespace nnet
 
-        struct state_udp_t
+    struct state_udp_t
+    {
+        nnet::nudp::udp_sock_t m_socks[2];
+
+        void init()
         {
-            nudp::udp_sock_t m_socks[2];
-
-            void init()
+            for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
             {
-                for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
+                m_socks[i].m_fd    = -1;
+                m_socks[i].m_port  = 0xFFFF;
+                m_socks[i].m_flags = 0;
+            }
+        }
+
+        nnet::nudp::udp_sock_t *find_sock(u16 port)
+        {
+            for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
+            {
+                if (m_socks[i].m_port == port)
                 {
-                    m_socks[i].m_fd    = -1;
-                    m_socks[i].m_port  = 0xFFFF;
-                    m_socks[i].m_flags = 0;
+                    return &m_socks[i];
                 }
             }
+            return nullptr;
+        }
 
-            nudp::udp_sock_t *find_sock(u16 port)
+        nnet::nudp::udp_sock_t *new_sock(u16 port)
+        {
+            for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
             {
-                for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
+                if (m_socks[i].m_port == 0xFFFF)
                 {
-                    if (m_socks[i].m_port == port)
-                    {
-                        return &m_socks[i];
-                    }
+                    m_socks[i].m_port = port;
+                    return &m_socks[i];
                 }
-                return nullptr;
             }
-
-            nudp::udp_sock_t *new_sock(u16 port)
-            {
-                for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
-                {
-                    if (m_socks[i].m_port == 0xFFFF)
-                    {
-                        m_socks[i].m_port = port;
-                        return &m_socks[i];
-                    }
-                }
-                return nullptr;
-            }
-        };
-
+            return nullptr;
+        }
+    };
+    state_udp_t gUdpState;
 #    endif
 
 #    ifdef TARGET_ESP8266
+    namespace nnet
+    {
         namespace nudp
         {
             struct udp_sock_t
@@ -89,50 +92,53 @@ namespace ncore
                 u16     m_flags;
             };
         }  // namespace nudp
-        struct state_udp_t
+    }  // namespace nnet
+
+    struct state_udp_t
+    {
+        nnet::nudp::udp_sock_t m_socks[2];
+        void                   init()
         {
-            nudp::udp_sock_t m_socks[2];
-            void             init()
+            for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
             {
-                for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
-                {
-                    m_socks[i].m_port  = 0xFFFF;
-                    m_socks[i].m_flags = 0;
-                }
+                m_socks[i].m_port  = 0xFFFF;
+                m_socks[i].m_flags = 0;
             }
+        }
 
-            nudp::udp_sock_t *find_sock(u16 port)
+        nnet::nudp::udp_sock_t *find_sock(u16 port)
+        {
+            for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
             {
-                for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
+                if (m_socks[i].m_port == port)
                 {
-                    if (m_socks[i].m_port == port)
-                    {
-                        return &m_socks[i];
-                    }
+                    return &m_socks[i];
                 }
-                return nullptr;
             }
+            return nullptr;
+        }
 
-            nudp::udp_sock_t *new_sock(u16 port)
+        nnet::nudp::udp_sock_t *new_sock(u16 port)
+        {
+            for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
             {
-                for (s32 i = 0; i < DARRAYSIZE(m_socks); ++i)
+                if (m_socks[i].m_port == 0xFFFF)
                 {
-                    if (m_socks[i].m_port == 0xFFFF)
-                    {
-                        m_socks[i].m_port = port;
-                        return &m_socks[i];
-                    }
+                    m_socks[i].m_port = port;
+                    return &m_socks[i];
                 }
-                return nullptr;
             }
-        };
+            return nullptr;
+        }
+    };
+    state_udp_t gUdpState;
 #    endif
 
+    namespace nnet
+    {
         namespace nudp
         {
 #    ifdef TARGET_ESP32
-            state_udp_t gUdpState;
-
             void init_state(state_t *state)
             {
                 gUdpState.init();
@@ -339,8 +345,7 @@ namespace ncore
 #    endif
 
 #    ifdef TARGET_ESP8266
-            udp_sock_t  gUdpSock;
-            state_udp_t gUdpState;
+            udp_sock_t gUdpSock;
 
             void init_state(state_t *state)
             {
@@ -423,7 +428,7 @@ namespace ncore
 #    endif
 
         }  // namespace nudp
-    }
+    }  // namespace nnet
 }  // namespace ncore
 
 #else

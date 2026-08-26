@@ -15,6 +15,7 @@
 #include "rcore/c_network.h"
 #include "rcore/c_log.h"
 #include "rcore/c_str.h"
+#include "rcore/c_system.h"
 
 #include "ccore/c_memory.h"
 
@@ -94,12 +95,13 @@ namespace ncore
 
         tcp_recv_plugin_t* new_handshake_plugin()
         {
-            tcp_recv_plugin_t*    plugin            = new tcp_recv_plugin_t();
-            plugin->m_plugin_data plugin->m_acquire = handshake_acquire_fn;
-            plugin->m_commit                        = handshake_commit_fn;
-            plugin->m_abort                         = handshake_abort_fn;
-            plugin->m_on_complete_ctx               = nullptr;
-            plugin->m_on_complete                   = nullptr;
+            tcp_recv_plugin_t* plugin = new tcp_recv_plugin_t();
+            plugin->m_plugin_data     = nullptr;
+            plugin->m_acquire         = handshake_acquire_fn;
+            plugin->m_commit          = handshake_commit_fn;
+            plugin->m_abort           = handshake_abort_fn;
+            plugin->m_on_complete_ctx = nullptr;
+            plugin->m_on_complete     = nullptr;
 
             return plugin;
         }
@@ -164,7 +166,7 @@ namespace ncore
                 download_plugin_data_t* download_data = (download_plugin_data_t*)plugin->m_plugin_data;
 
                 // Allocate buffer for receiving blocks
-                download_data->m_recv_buffer = nsystem::malloc(init_payload->block_size + sizeof(data_block_header_t));
+                download_data->m_recv_buffer = (byte*)nsystem::malloc(init_payload->block_size + sizeof(data_block_header_t));
 
                 out_buffer->m_buffer = download_data->m_recv_buffer;
                 out_buffer->m_length = in_hdr->payload_len;  // Should be sizeof(payload_download_t)
@@ -190,7 +192,7 @@ namespace ncore
                 download_data->m_target_buffer_size   = init_payload->total_size;
                 // PSRAM allocation
                 const u32 alignment            = 32;  // Align to 32 bytes for better performance
-                download_data->m_target_buffer = nsystem::alloc_psram_aligned(download_data->m_target_buffer_size, alignment);
+                download_data->m_target_buffer = (byte*)nsystem::alloc_psram_aligned(download_data->m_target_buffer_size, alignment);
             }
             else if (hdr->msg_type == 0x11)
             {

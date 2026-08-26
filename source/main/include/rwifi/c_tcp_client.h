@@ -40,6 +40,9 @@ namespace ncore
             u32 m_length;
         };
 
+        struct tcp_recv_plugin_t;
+        struct tcp_client_t;
+
         typedef bool (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, tcp_client_t* client, msg_hdr_t* hdr, tcp_buffer_t* out);
         typedef void (*tcp_recv_commit_fn)(tcp_recv_plugin_t* plugin, tcp_client_t* client, msg_hdr_t* hdr, tcp_buffer_t buffer);
         typedef void (*tcp_recv_abort_fn)(tcp_recv_plugin_t* plugin, tcp_client_t* client);
