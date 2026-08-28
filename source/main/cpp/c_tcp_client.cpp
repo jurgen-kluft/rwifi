@@ -34,13 +34,13 @@ namespace ncore
             if (next > c.m_config_timing.m_backoff_max_ms)
                 next = c.m_config_timing.m_backoff_max_ms;
 
-            c.m_backoff_ms      = next;
+            c.m_backoff_ms = next;
 
             u32 jitter = c.m_config_timing.m_backoff_jitter_ms;
             if (jitter > 0)
             {
                 const u32 rand_val = ((u32)ntimer::millis() & 0xFFF);
-                c.m_backoff_ms = c.m_backoff_ms - (jitter >> 1) + ((rand_val * jitter) >> 12);
+                c.m_backoff_ms     = c.m_backoff_ms - (jitter >> 1) + ((rand_val * jitter) >> 12);
             }
             else
             {
@@ -95,7 +95,7 @@ namespace ncore
             {
                 c.m_last_state = c.m_state;
                 if (c.m_backoff_attempts)
-                c.m_state      = TCP_STATE_DISCONNECTED;
+                    c.m_state = TCP_STATE_DISCONNECTED;
             }
         }
 
@@ -106,7 +106,7 @@ namespace ncore
                 if (c.m_tcp_recv_buf.m_buffer && c.m_tcp_recv_active_plugin != nullptr)
                 {
                     if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
-                        c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin->m_recv_ctx);
+                        c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                     c.m_tcp_recv_active_plugin = nullptr;
                     c.m_tcp_recv_expected      = 0;
                     c.m_tcp_recv_offset        = 0;
@@ -135,7 +135,7 @@ namespace ncore
                     if (c.m_config_sock_ops.m_read(c.m_socket, msg_hdr, msg_hdr_size) < 0)
                     {
                         if (c.m_tcp_recv_active_plugin != nullptr && c.m_tcp_recv_active_plugin->m_abort != nullptr)
-                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin->m_recv_ctx);
+                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                         c.m_tcp_recv_active_plugin = nullptr;
                         c.m_tcp_recv_expected      = 0;
                         c.m_tcp_recv_offset        = 0;
@@ -154,7 +154,7 @@ namespace ncore
                         tcp_recv_plugin_t* plugin = c.m_tcp_recv_plugins[plugin_index];
                         if (plugin == nullptr)
                             continue;
-                        if (plugin->m_acquire(plugin->m_recv_ctx, msg_hdr, &c.m_tcp_recv_buf))
+                        if (plugin->m_acquire(plugin, msg_hdr, &c.m_tcp_recv_buf))
                         {
                             c.m_tcp_recv_active_plugin = plugin;
                             c.m_tcp_recv_expected      = msg_hdr->payload_len;
@@ -166,7 +166,7 @@ namespace ncore
                     {
                         if (c.m_tcp_recv_active_plugin != nullptr && c.m_tcp_recv_active_plugin->m_abort)
                         {
-                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin->m_recv_ctx);
+                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                             c.m_tcp_recv_active_plugin = nullptr;
                         }
                         c.m_tcp_recv_expected = 0;
@@ -183,7 +183,7 @@ namespace ncore
 
                 if (c.m_tcp_recv_offset == c.m_tcp_recv_expected)
                 {
-                    c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin->m_recv_ctx, msg_hdr, c.m_tcp_recv_buf);
+                    c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin, msg_hdr, c.m_tcp_recv_buf);
                     c.m_tcp_recv_expected = 0;
                     c.m_tcp_recv_offset   = 0;
                     c.m_tcp_recv_buf      = tcp_buffer_t{nullptr, 0};
@@ -281,13 +281,13 @@ namespace ncore
             if (c.m_tcp_recv_buf.m_buffer != nullptr && c.m_tcp_recv_active_plugin != nullptr)
             {
                 if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
-                    c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin->m_recv_ctx);
+                    c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                 c.m_tcp_recv_active_plugin = nullptr;
                 c.m_tcp_recv_expected      = 0;
                 c.m_tcp_recv_offset        = 0;
             }
 
-            c.m_tcp_recv_buf = {0, 0};
+            c.m_tcp_recv_buf = {nullptr, 0};
 
             if (c.m_state == TCP_STATE_CONNECTED)
             {
@@ -347,14 +347,14 @@ namespace ncore
             return false;
         }
 
-    }  // namespace ntcp
+    }  // namespace nnet
 }  // namespace ncore
 
 #endif
 
 namespace ncore
 {
-    namespace ntcp
+    namespace nnet
     {
 #ifdef TARGET_ARDUINO
         static u32 millis_cb() { return (u32)::millis(); }
@@ -464,5 +464,5 @@ namespace ncore
         // -------------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------------
 
-    }  // namespace ntcp
+    }  // namespace nnet
 }  // namespace ncore
