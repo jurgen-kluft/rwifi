@@ -197,9 +197,9 @@ namespace ncore
 
         void* setup_default(config_t* config)
         {
-            setup(&config->m_time_ops);
-            setup(&config->m_timing);
-            void* socket = setup(&config->m_sock_ops);
+            setup_default(&config->m_time_ops);
+            setup_default(&config->m_timing);
+            void* socket = setup_default(&config->m_sock_ops);
             return socket;
         }
 

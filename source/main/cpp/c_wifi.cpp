@@ -96,13 +96,13 @@ namespace ncore
         void fast_connect_normal(const char* ssid, const char* auth) { WiFi.begin(ssid, auth); }
 
         // Connect to wifi as specified, returns true if ok
-        void connect(state_t* state, bool force_normal_mode)
+        void connect(state_t* state)
         {
             WiFi.setAutoReconnect(false);  // prevent early autoconnect
             WiFi.persistent(true);
             WiFi.mode(WIFI_STA);
 
-            if (state->WiFi->m_cache.ip_address == 0 || force_normal_mode)
+            if (state->WiFi->m_cache.ip_address == 0)
             {
                 nlog::printfln("Connect (normal) to WiFi with SSID %s ...", va_t(state->WiFiSSID));
                 fast_connect_normal(state->WiFiSSID, state->WiFiPassword);
@@ -112,6 +112,16 @@ namespace ncore
                 nlog::printfln("Connect (fast) to WiFi with SSID %s ...", va_t(state->WiFiSSID));
                 fast_connect_fast(state->WiFiSSID, state->WiFiPassword, state->WiFi->m_cache);
             }
+        }
+
+        void connect_normal(state_t* state)
+        {
+            WiFi.setAutoReconnect(false);  // prevent early autoconnect
+            WiFi.persistent(true);
+            WiFi.mode(WIFI_STA);
+
+            nlog::printfln("Connect (normal) to WiFi with SSID %s ...", va_t(state->WiFiSSID));
+            fast_connect_normal(state->WiFiSSID, state->WiFiPassword);
         }
 
         bool connected(state_t* state)

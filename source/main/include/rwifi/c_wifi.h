@@ -15,7 +15,8 @@ namespace ncore
     {
         void init_state(state_t* state, bool load_cache);
 
-        void connect(state_t* state, bool force_normal_mode = false);
+        void connect(state_t* state);
+        void connect_normal(state_t* state);
         bool connected(state_t* state);
         void disconnect(state_t* state);
 

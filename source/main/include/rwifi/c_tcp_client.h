@@ -54,7 +54,7 @@ namespace ncore
             millis_fn m_millis;
         };
 
-        void setup(time_ops_t* ops);
+        void setup_default(time_ops_t* ops);
 
         struct tcp_socket_ops_t
         {
@@ -66,7 +66,7 @@ namespace ncore
             tcp_stop_fn      m_stop;
         };
 
-        void* setup(tcp_socket_ops_t* ops);
+        void* setup_default(tcp_socket_ops_t* ops);
 
         struct tcp_recv_plugin_t
         {
@@ -86,7 +86,7 @@ namespace ncore
             u32 m_backoff_max_ms;
         };
 
-        inline void setup(tcp_timing_t* timing)
+        inline void setup_default(tcp_timing_t* timing)
         {
             // default timing values
             timing->m_connect_timeout_ms = 5000;       // 5 seconds
