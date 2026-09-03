@@ -342,6 +342,11 @@ namespace ncore
             return m.m_mac_address;
         }
 
+        i32       get_rssi(wifi_manager_t& m)
+        {
+            return m.m_rssi;
+        }
+
         void print_info(wifi_manager_t& m)
         {
             // ncore::nlog::log_info("WIFI", "Connection Info:");

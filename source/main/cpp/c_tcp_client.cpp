@@ -4,7 +4,6 @@
 #    include "WiFi.h"
 
 #    include "rcore/c_app.h"
-#    include "rcore/c_packet.h"
 #    include "rcore/c_network.h"
 #    include "rcore/c_eeprom.h"
 #    include "rcore/c_log.h"
