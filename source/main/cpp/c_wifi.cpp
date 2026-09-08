@@ -134,17 +134,24 @@ namespace ncore
 
                     WiFi.macAddress(state->MACAddress);
 
-                    nnet::cache_t& cache = state->WiFi->m_cache;
-                    cache.ip_address     = WiFi.localIP();
-                    cache.ip_gateway     = WiFi.gatewayIP();
-                    cache.ip_mask        = WiFi.subnetMask();
-                    cache.ip_dns1        = WiFi.dnsIP(0);
-                    cache.ip_dns2        = WiFi.dnsIP(1);
-                    WiFi.BSSID(cache.wifi_bssid);
+                    nnet::cache_t cache;
+                    cache.ip_address   = WiFi.localIP();
+                    cache.ip_gateway   = WiFi.gatewayIP();
+                    cache.ip_mask      = WiFi.subnetMask();
+                    cache.ip_dns1      = WiFi.dnsIP(0);
+                    cache.ip_dns2      = WiFi.dnsIP(1);
                     cache.wifi_channel = WiFi.channel();
-                    cache.m_crc        = 0;
-                    cache.m_crc        = neeprom::crc32((const byte*)&cache, sizeof(nnet::cache_t));
-                    neeprom::save((const byte*)&cache, sizeof(nnet::cache_t));
+                    WiFi.BSSID(cache.wifi_bssid);
+                    cache.m_crc   = 0;
+                    const u32 crc = neeprom::crc32((const byte*)&cache, sizeof(nnet::cache_t));
+                    if (crc != state->WiFi->m_cache.m_crc)
+                    {
+                        // Avoid writing to EEPROM if the cache hasn't changed, as this can 
+                        // wear out the flash memory over time.
+                        cache.m_crc          = crc;
+                        state->WiFi->m_cache = cache;
+                        neeprom::save((const byte*)&cache, sizeof(nnet::cache_t));
+                    }
                 }
                 return true;
             }
