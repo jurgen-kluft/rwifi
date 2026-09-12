@@ -46,6 +46,7 @@ namespace ncore
         typedef bool (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t* out);
         typedef void (*tcp_recv_commit_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t buffer);
         typedef void (*tcp_recv_abort_fn)(tcp_recv_plugin_t* plugin);
+        typedef void (*tcp_recv_begin_fn)(void* on_begin_context, u32 data_type, u32 data_size, byte*& data_ptr);
         typedef void (*tcp_recv_complete_fn)(void* on_complete_context, u32 data_type, u32 data_size, byte const* data_ptr);
 
         // ------------------------------------------------------------
@@ -79,7 +80,8 @@ namespace ncore
             tcp_recv_acquire_fn  m_acquire;
             tcp_recv_commit_fn   m_commit;
             tcp_recv_abort_fn    m_abort;
-            void*                m_on_complete_ctx;
+            void*                m_user_ctx;
+            tcp_recv_begin_fn    m_on_begin;
             tcp_recv_complete_fn m_on_complete;
         };
 

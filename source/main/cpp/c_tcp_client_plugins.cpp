@@ -242,9 +242,8 @@ namespace ncore
                 download_plugin_data_t* download_data = (download_plugin_data_t*)plugin->m_plugin_data;
                 download_data->m_data_type            = init_payload->data_type;
                 download_data->m_target_buffer_size   = init_payload->total_size;
-                // PSRAM allocation
-                const u32 alignment            = 32;  // Align to 32 bytes for better performance
-                download_data->m_target_buffer = (byte*)nsystem::alloc_psram_aligned(download_data->m_target_buffer_size, alignment);
+
+                plugin->m_on_begin(plugin->m_user_ctx, download_data->m_data_type, download_data->m_target_buffer_size, download_data->m_target_buffer);
 
                 data_blocks_init_ack_t ack_msg;
                 ack_msg.magic       = 0xF00D;
@@ -285,7 +284,7 @@ namespace ncore
                 {
                     if (plugin->m_on_complete)
                     {
-                        plugin->m_on_complete(plugin->m_on_complete_ctx, download_data->m_data_type, download_data->m_target_buffer_size, download_data->m_target_buffer);
+                        plugin->m_on_complete(plugin->m_user_ctx, download_data->m_data_type, download_data->m_target_buffer_size, download_data->m_target_buffer);
 
                         // We are done downloading, so we can free the receive buffer.
                         nsystem::free(download_data->m_recv_buffer);
@@ -319,7 +318,7 @@ namespace ncore
         // There can only be one download plugin active at a time
         static download_plugin_data_t s_download_plugin_data;
 
-        tcp_recv_plugin_t* new_download_plugin(tcp_recv_complete_fn on_complete, void* on_complete_ctx)
+        tcp_recv_plugin_t* new_download_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_ctx)
         {
             download_plugin_data_t* data = &s_download_plugin_data;
             data->m_recv_buffer          = nullptr;  // Buffer for receiving blocks of data
@@ -333,7 +332,8 @@ namespace ncore
             plugin->m_acquire         = download_acquire_fn;
             plugin->m_commit          = download_commit_fn;
             plugin->m_abort           = download_abort_fn;
-            plugin->m_on_complete_ctx = on_complete_ctx;
+            plugin->m_user_ctx        = user_ctx;
+            plugin->m_on_begin        = on_begin;
             plugin->m_on_complete     = on_complete;
             return plugin;
         }

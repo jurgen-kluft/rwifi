@@ -12,7 +12,7 @@ namespace ncore
     namespace nnet
     {
         tcp_recv_plugin_t* new_handshake_plugin(tcp_recv_complete_fn on_complete, void* user_context);
-        tcp_recv_plugin_t* new_download_plugin(tcp_recv_complete_fn on_complete, void* user_context);
+        tcp_recv_plugin_t* new_download_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_context);
 
     }  // namespace nnet
 }  // namespace ncore
