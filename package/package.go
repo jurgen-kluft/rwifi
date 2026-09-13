@@ -4,6 +4,7 @@ import (
 	csdk "github.com/jurgen-kluft/csdk/package"
 	denv "github.com/jurgen-kluft/go-ide/denv"
 	rcore "github.com/jurgen-kluft/rcore/package"
+	rhome "github.com/jurgen-kluft/rhome/package"
 )
 
 // rwifi is the WiFi package for Arduino Esp32/Esp8266 projects.
@@ -16,12 +17,14 @@ func GetPackage() *denv.Package {
 	name := repo_name
 
 	// dependencies
-	sdkpkg := csdk.GetPackage()
 	corepkg := rcore.GetPackage()
+	homepkg := rhome.GetPackage()
+	sdkpkg := csdk.GetPackage()
 
 	// main package
 	mainpkg := denv.NewPackage(repo_path, repo_name)
 	mainpkg.AddPackage(corepkg)
+	mainpkg.AddPackage(homepkg)
 	mainpkg.AddPackage(sdkpkg)
 
 	// esp32 library
@@ -41,6 +44,7 @@ func GetPackage() *denv.Package {
 	// main library
 	mainlib := denv.SetupCppLibProject(mainpkg, name)
 	mainlib.AddDependencies(corepkg.GetMainLib())
+	mainlib.AddDependencies(homepkg.GetMainLib())
 	mainlib.AddDependency(esp32wifilib)
 	mainlib.AddDependency(esp8266wifilib)
 

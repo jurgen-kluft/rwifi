@@ -6,7 +6,7 @@
 #endif
 
 #include "rwifi/c_wifi_mgr.h"
-#include "rwifi/c_protocol.h"
+#include "rhome/c_msg.h"
 
 namespace ncore
 {

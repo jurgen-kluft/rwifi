@@ -64,8 +64,6 @@ namespace ncore
         // --- MSG TYPE 0x02: Handshake Ack (ESP32 -> Mac) ---
         struct handshake_ack_t : public msg_hdr_t
         {
-            u8 mac_address[6];
-            u8 reserved0[58];
         };
 
         // --- MSG TYPE 0x03: Handshake Final Ack (Mac -> ESP32) ---
@@ -101,14 +99,14 @@ namespace ncore
             {
                 // Prepare the handshake ack message
                 handshake_ack_t ack_msg;
-                ack_msg.magic       = 0xF00D;
-                ack_msg.msg_type    = MSG_TYPE_HANDSHAKE_ACK;
-                ack_msg.payload_len = sizeof(handshake_ack_t) - sizeof(msg_hdr_t);
-                ack_msg.checksum    = 0;  // No checksum
+                ack_msg.Magic       = 0xF00D;
+                ack_msg.Type        = MSG_TYPE_HANDSHAKE_ACK;
+                ack_msg.PayloadSize = sizeof(handshake_ack_t) - sizeof(msg_hdr_t);
+                ack_msg.Checksum    = 0;  // No checksum
 
                 // Fill in the MAC address (for example, using a placeholder here)
-                u8 mac[6];
-                g_memcpy(ack_msg.mac_address, mac, sizeof(mac));
+                const u8* mac = get_mac_address(plugin->m_wifi_mgr);
+                g_memcpy(ack_msg.Mac, mac, 6);
 
                 // Send the handshake ack message back to the Mac
                 nnet::send_later(plugin->m_client, (byte*)&ack_msg, sizeof(handshake_ack_t));
@@ -153,10 +151,10 @@ namespace ncore
         // 8888888P"   "Y88888P"  888P     Y888 888    Y888 88888888 "Y88888P" d88P     888 8888888P"
 
         // NOTE:
-        // 
-        // Downloading data is done in pieces called "blocks". Each block is sent from the Mac to the ESP32 in a separate message. 
-        // The ESP32 will acknowledge each block received, and the Mac will resend any block that is marked as corrupt or not acknowledged. 
-        // The ESP32 will reassemble the blocks into a complete data set in PSRAM, and then call the on_complete callback when all blocks 
+        //
+        // Downloading data is done in pieces called "blocks". Each block is sent from the Mac to the ESP32 in a separate message.
+        // The ESP32 will acknowledge each block received, and the Mac will resend any block that is marked as corrupt or not acknowledged.
+        // The ESP32 will reassemble the blocks into a complete data set in PSRAM, and then call the on_complete callback when all blocks
         // have been received and verified.
 
         enum
@@ -187,13 +185,13 @@ namespace ncore
 
         struct data_blocks_init_ack_t : public msg_hdr_t
         {
-            u32 status;  // 0x01 = Ready to receive, 0x00 = Out of memory/Error
+            u32 Status;  // 0x01 = Ready to receive, 0x00 = Out of memory/Error
         };
 
         struct data_block_ack_t : public msg_hdr_t
         {
-            u32 block_index;  // Confirms receipt of specific block
-            u32 status;       // 0x01 = Success, 0x00 = Corrupt/Retry
+            u32 BlockIndex;  // Confirms receipt of specific block
+            u32 Status;      // 0x01 = Success, 0x00 = Corrupt/Retry
         };
 
         struct download_plugin_data_t
@@ -246,11 +244,14 @@ namespace ncore
                 plugin->m_on_begin(plugin->m_user_ctx, download_data->m_data_type, download_data->m_target_buffer_size, download_data->m_target_buffer);
 
                 data_blocks_init_ack_t ack_msg;
-                ack_msg.magic       = 0xF00D;
-                ack_msg.msg_type    = DATA_BLOCK_INIT_ACK_MSG_TYPE;
-                ack_msg.payload_len = sizeof(data_blocks_init_ack_t) - sizeof(msg_hdr_t);
-                ack_msg.checksum    = 0;                                               // No checksum
-                ack_msg.status      = (download_data->m_target_buffer) ? 0x01 : 0x00;  // 0x01 = Ready to receive, 0x00 = Out of memory/Error
+                ack_msg.Magic       = 0xF00D;
+                ack_msg.Type        = DATA_BLOCK_INIT_ACK_MSG_TYPE;
+                ack_msg.PayloadSize = sizeof(data_blocks_init_ack_t) - sizeof(msg_hdr_t);
+                ack_msg.Checksum    = 0;                                               // No checksum
+                ack_msg.Status      = (download_data->m_target_buffer) ? 0x01 : 0x00;  // 0x01 = Ready to receive, 0x00 = Out of memory/Error
+
+                const u8* mac = get_mac_address(plugin->m_wifi_mgr);
+                g_memcpy(ack_msg.Mac, mac, 6);
 
                 nnet::send_later(*plugin->m_client, (byte*)&ack_msg, sizeof(data_blocks_init_ack_t));
             }
@@ -268,12 +269,16 @@ namespace ncore
                     g_memcpy(download_data->m_target_buffer + block_header->file_offset, data, block_header->block_size);
 
                     data_block_ack_t ack_msg;
-                    ack_msg.magic       = 0xF00D;
-                    ack_msg.msg_type    = DATA_BLOCK_ACK_MSG_TYPE;
-                    ack_msg.payload_len = sizeof(data_block_ack_t) - sizeof(msg_hdr_t);
-                    ack_msg.checksum    = 0;  // No checksum
-                    ack_msg.block_index = block_header->block_index;
-                    ack_msg.status      = 0x01;  // Success
+                    ack_msg.Magic       = 0xF00D;
+                    ack_msg.Type        = DATA_BLOCK_ACK_MSG_TYPE;
+                    ack_msg.PayloadSize = sizeof(data_block_ack_t) - sizeof(msg_hdr_t);
+                    ack_msg.Checksum    = 0;  // No checksum
+                    ack_msg.BlockIndex  = block_header->block_index;
+                    ack_msg.Status      = 0x01;  // Success
+
+                    const u8* mac = get_mac_address(plugin->m_wifi_mgr);
+                    g_memcpy(ack_msg.Mac, mac, 6);
+
                     nnet::send_later(*plugin->m_client, (byte*)&ack_msg, sizeof(data_block_ack_t));
 
                     download_data->m_received_blocks++;
