@@ -11,10 +11,14 @@ namespace ncore
 {
     namespace nnet
     {
-        tcp_recv_plugin_t* new_handshake_plugin(tcp_recv_complete_fn on_complete, void* user_context);
+        tcp_recv_plugin_t* new_handshake_plugin(tcp_recv_begin_fn on_handshake, tcp_recv_complete_fn on_complete, void* user_context);
         void               destroy_handshake_plugin(tcp_recv_plugin_t* plugin);
+
+        // Download plugin for handling file downloads where the data is received in chunks
         tcp_recv_plugin_t* new_download_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_context);
         void               destroy_download_plugin(tcp_recv_plugin_t* plugin);
+
+        // Messages plugin for handling generic incoming messages
         tcp_recv_plugin_t* new_messages_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_context);
         void               destroy_messages_plugin(tcp_recv_plugin_t* plugin);
 
