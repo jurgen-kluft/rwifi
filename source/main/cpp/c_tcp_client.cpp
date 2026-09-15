@@ -205,11 +205,11 @@ namespace ncore
         // ------------------------------------------------------------
         // Public API
         // ------------------------------------------------------------
-        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port)
+        void setup(tcp_client_t& c, const config_t* config, void* socket)
         {
             c.m_socket = socket;
-            c.m_ip     = ip;
-            c.m_port   = port;
+            c.m_ip     = 0;
+            c.m_port   = 0;
 
             c.m_config_time_ops = config->m_time_ops;
             c.m_config_sock_ops = config->m_sock_ops;
@@ -239,16 +239,27 @@ namespace ncore
             c.m_tcp_recv_buf           = {nullptr, 0};
         }
 
-        void register_plugin(tcp_client_t& c, tcp_recv_plugin_t* plugin)
+        void register_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin)
         {
-            for (u32 i = 0; i < 8; ++i)
+            if (id >= 8)
+                return;
+            c.m_tcp_recv_plugins[id]    = plugin;
+            c.m_tcp_recv_plugin_ctx[id] = &c;
+        }
+
+        tcp_recv_plugin_t* get_plugin(tcp_client_t& c, u8 id) 
+        {
+            if (id >= 8)
+                return nullptr;
+            return c.m_tcp_recv_plugins[id]; 
+        }
+
+        void unregister_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin)
+        {
+            if (id < 8 && c.m_tcp_recv_plugins[id] == plugin)
             {
-                if (c.m_tcp_recv_plugins[i] == nullptr)
-                {
-                    c.m_tcp_recv_plugins[i]    = plugin;
-                    c.m_tcp_recv_plugin_ctx[i] = &c;
-                    return;
-                }
+                c.m_tcp_recv_plugins[id]    = nullptr;
+                c.m_tcp_recv_plugin_ctx[id] = nullptr;
             }
         }
 
@@ -300,9 +311,18 @@ namespace ncore
             c.m_state      = TCP_STATE_INACTIVE;
         }
 
-        void connect(tcp_client_t& c)
+        void connect(tcp_client_t& c, u32 ip, u16 port)
         {
+            if (c.m_enabled)
+            {
+                // If the client is already enabled, we don't initiate a new connection.
+                // Need to disconnect first before initiating a new connection.
+                return;
+            }
+
             c.m_enabled = true;
+            c.m_ip      = ip;
+            c.m_port    = port;
             activate(c);
         }
 

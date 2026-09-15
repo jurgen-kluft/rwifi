@@ -59,6 +59,7 @@ namespace ncore
         // --- MSG TYPE 0x01: Handshake Initiate (Mac -> ESP32) ---
         struct handshake_initiate_t : public msg_hdr_t
         {
+            u32 assets[4 * 2];  // 4 pairs (asset type, asset version)
         };
 
         // --- MSG TYPE 0x02: Handshake Ack (ESP32 -> Mac) ---
@@ -130,7 +131,7 @@ namespace ncore
 
         tcp_recv_plugin_t* new_handshake_plugin(tcp_recv_complete_fn on_complete, void* on_complete_ctx)
         {
-            tcp_recv_plugin_t* plugin = new tcp_recv_plugin_t();
+            tcp_recv_plugin_t* plugin = nsystem::calloc(sizeof(tcp_recv_plugin_t));
             plugin->m_plugin_data     = nullptr;
             plugin->m_acquire         = handshake_acquire_fn;
             plugin->m_commit          = handshake_commit_fn;
@@ -140,6 +141,8 @@ namespace ncore
 
             return plugin;
         }
+
+        void destroy_handshake_plugin(tcp_recv_plugin_t* plugin) { nsystem::free(plugin); }
 
         // 8888888b.   .d88888b.  888       888 888b    888 888      .d88888b.        d8888 8888888b.
         // 888  "Y88b d88P" "Y88b 888   o   888 8888b   888 888     d88P" "Y88b      d88888 888  "Y88b
@@ -321,18 +324,17 @@ namespace ncore
         }
 
         // There can only be one download plugin active at a time
-        static download_plugin_data_t s_download_plugin_data;
 
         tcp_recv_plugin_t* new_download_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_ctx)
         {
-            download_plugin_data_t* data = &s_download_plugin_data;
+            download_plugin_data_t* data = (download_plugin_data_t*)nsystem::calloc(sizeof(download_plugin_data_t));
             data->m_recv_buffer          = nullptr;  // Buffer for receiving blocks of data
             data->m_target_buffer        = nullptr;  // Destination will be set when receiving the first block
             data->m_target_buffer_size   = 0;
             data->m_total_blocks         = 0;
             data->m_received_blocks      = 0;
 
-            tcp_recv_plugin_t* plugin = new tcp_recv_plugin_t();
+            tcp_recv_plugin_t* plugin = (tcp_recv_plugin_t*)nsystem::calloc(sizeof(tcp_recv_plugin_t));
             plugin->m_plugin_data     = data;
             plugin->m_acquire         = download_acquire_fn;
             plugin->m_commit          = download_commit_fn;
@@ -341,6 +343,92 @@ namespace ncore
             plugin->m_on_begin        = on_begin;
             plugin->m_on_complete     = on_complete;
             return plugin;
+        }
+
+        void destroy_download_plugin(tcp_recv_plugin_t* plugin)
+        {
+            download_plugin_data_t* download_data = (download_plugin_data_t*)plugin->m_plugin_data;
+            if (download_data->m_recv_buffer)
+            {
+                nsystem::free(download_data->m_recv_buffer);
+                download_data->m_recv_buffer = nullptr;
+            }
+
+            nsystem::free(download_data);
+            nsystem::free(plugin);
+        }
+
+        // 888b     d888 8888888888 .d8888b.   .d8888b.        d8888  .d8888b.  8888888888 .d8888b.
+        // 8888b   d8888 888       d88P  Y88b d88P  Y88b      d88888 d88P  Y88b 888       d88P  Y88b
+        // 88888b.d88888 888       Y88b.      Y88b.          d88P888 888    888 888       Y88b.
+        // 888Y88888P888 8888888    "Y888b.    "Y888b.      d88P 888 888        8888888    "Y888b.
+        // 888 Y888P 888 888           "Y88b.     "Y88b.   d88P  888 888  88888 888           "Y88b.
+        // 888  Y8P  888 888             "888       "888  d88P   888 888    888 888             "888
+        // 888   "   888 888       Y88b  d88P Y88b  d88P d8888888888 Y88b  d88P 888       Y88b  d88P
+        // 888       888 8888888888 "Y8888P"   "Y8888P" d88P     888  "Y8888P88 8888888888 "Y8888P"
+
+        struct message_plugin_data_t
+        {
+            byte* m_target_buffer;       // Final destination for a message
+            u32   m_target_buffer_size;  // Size of the PSRAM buffer
+            u32   m_data_type;           // Remember data type
+        };
+
+        bool message_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, tcp_buffer_t* out_buffer)
+        {
+            message_plugin_data_t* message_data = (message_plugin_data_t*)plugin->m_plugin_data;
+            message_data->m_data_type           = in_hdr->m_data_type;
+            message_data->m_target_buffer       = nullptr;
+            message_data->m_target_buffer_size  = 0;
+
+            plugin->m_on_begin(plugin->m_user_ctx, message_data->m_data_type, message_data->m_target_buffer_size, message_data->m_target_buffer);
+
+            out_buffer->m_data      = message_data->m_target_buffer;
+            out_buffer->m_data_size = message_data->m_target_buffer_size;
+
+            return true;  // Handled download message
+        }
+
+        void message_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t buffer)
+        {
+            message_plugin_data_t* message_data = (message_plugin_data_t*)plugin->m_plugin_data;
+            plugin->m_on_complete(plugin->m_user_ctx, message_data->m_data_type, buffer.m_data_size, buffer.m_data);
+            message_data->m_target_buffer      = nullptr;
+            message_data->m_target_buffer_size = 0;
+        }
+
+        void message_abort_fn(tcp_recv_plugin_t* plugin)
+        {
+            message_plugin_data_t* message_data = (message_plugin_data_t*)plugin->m_plugin_data;
+            message_data->m_target_buffer       = nullptr;
+            message_data->m_target_buffer_size  = 0;
+        }
+
+        tcp_recv_plugin_t* new_messages_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_ctx)
+        {
+            message_plugin_data_t* data   = (message_plugin_data_t*)nsystem::malloc(sizeof(message_plugin_data_t));
+            tcp_recv_plugin_t*     plugin = (tcp_recv_plugin_t*)nsystem::malloc(sizeof(tcp_recv_plugin_t));
+            plugin->m_plugin_data         = data;
+            plugin->m_acquire             = message_acquire_fn;
+            plugin->m_commit              = message_commit_fn;
+            plugin->m_abort               = message_abort_fn;
+            plugin->m_user_ctx            = user_ctx;
+            plugin->m_on_begin            = on_begin;
+            plugin->m_on_complete         = on_complete;
+
+            return plugin;
+        }
+
+        void destroy_messages_plugin(tcp_recv_plugin_t* plugin)
+        {
+            if (plugin)
+            {
+                if (plugin->m_plugin_data)
+                {
+                    nsystem::free(plugin->m_plugin_data);
+                }
+                nsystem::free(plugin);
+            }
         }
 
     }  // namespace nnet

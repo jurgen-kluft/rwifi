@@ -54,9 +54,7 @@ namespace ncore
         // ------------------------------------------------------------
 
         struct time_ops_t
-        {
-            millis_fn m_millis;
-        };
+        { millis_fn m_millis; };
 
         void setup_default(time_ops_t* ops);
 
@@ -161,12 +159,14 @@ namespace ncore
         // API
         // ------------------------------------------------------------
 
-        void setup(tcp_client_t& c, const config_t* config, void* socket, u32 ip, u16 port);
-        void register_plugin(tcp_client_t& c, tcp_recv_plugin_t* plugin);
-        void register_on_connected_callback(tcp_client_t& c, tcp_user_on_connected_fn on_connected, void* user_context);
-        void register_on_disconnected_callback(tcp_client_t& c, tcp_user_on_disconnected_fn on_disconnected, void* user_context);
+        void               setup(tcp_client_t& c, const config_t* config, void* socket);
+        void               register_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin);
+        tcp_recv_plugin_t* get_plugin(tcp_client_t& c, u8 id);
+        void               unregister_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin);
+        void               register_on_connected_callback(tcp_client_t& c, tcp_user_on_connected_fn on_connected, void* user_context);
+        void               register_on_disconnected_callback(tcp_client_t& c, tcp_user_on_disconnected_fn on_disconnected, void* user_context);
 
-        void connect(tcp_client_t& c);
+        void connect(tcp_client_t& c, u32 ip, u16 port);
         void disconnect(tcp_client_t& c);
         bool tick_tcp_client(wifi_manager_t* wifi_mgr, tcp_client_t& c);
         bool send(tcp_client_t& c, const void* data, u32 len);
