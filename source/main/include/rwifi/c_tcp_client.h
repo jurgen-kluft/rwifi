@@ -34,7 +34,7 @@ namespace ncore
         typedef i32 (*tcp_write_fn)(void* sock, const void* src, u32 len);
         typedef void (*tcp_stop_fn)(void* sock);
 
-        struct tcp_buffer_t
+        struct buffer_t
         {
             u8* m_buffer;
             u32 m_length;
@@ -43,18 +43,20 @@ namespace ncore
         struct tcp_recv_plugin_t;
         struct tcp_client_t;
 
-        typedef bool (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t* out);
-        typedef void (*tcp_recv_commit_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t buffer);
+        typedef bool (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t* out);
+        typedef void (*tcp_recv_commit_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t buffer);
         typedef void (*tcp_recv_abort_fn)(tcp_recv_plugin_t* plugin);
-        typedef void (*tcp_recv_begin_fn)(void* on_begin_context, u32 data_type, u32& in_outdata_size, byte*& out_data_ptr);
-        typedef void (*tcp_recv_complete_fn)(void* on_complete_context, u32 data_type, u32 data_size, byte const* data_ptr);
+        typedef void (*tcp_recv_user_acquire_fn)(void* on_acquire_context, u32 data_type, buffer_t& in_out_buffer);
+        typedef void (*tcp_recv_user_complete_fn)(void* on_complete_context, u32 data_type, buffer_t buffer);
 
         // ------------------------------------------------------------
         // Ops groupings
         // ------------------------------------------------------------
 
         struct time_ops_t
-        { millis_fn m_millis; };
+        {
+            millis_fn m_millis;
+        };
 
         void setup_default(time_ops_t* ops);
 
@@ -72,15 +74,12 @@ namespace ncore
 
         struct tcp_recv_plugin_t
         {
-            wifi_manager_t*      m_wifi_mgr;
-            tcp_client_t*        m_client;
-            void*                m_plugin_data;
-            tcp_recv_acquire_fn  m_acquire;
-            tcp_recv_commit_fn   m_commit;
-            tcp_recv_abort_fn    m_abort;
-            void*                m_user_ctx;
-            tcp_recv_begin_fn    m_on_begin;
-            tcp_recv_complete_fn m_on_complete;
+            wifi_manager_t*           m_wifi_mgr;
+            tcp_client_t*             m_client;
+            tcp_recv_acquire_fn       m_acquire;
+            tcp_recv_commit_fn        m_commit;
+            tcp_recv_abort_fn         m_abort;
+            void*                     m_plugin_data;
         };
 
         struct tcp_timing_t
@@ -152,7 +151,7 @@ namespace ncore
             u32                m_tcp_recv_expected;
             u32                m_tcp_recv_offset;
             u8                 m_tcp_recv_header[16];  // Must be at least sizeof(msg_hdr_t)
-            tcp_buffer_t       m_tcp_recv_buf;
+            buffer_t       m_tcp_recv_buf;
         };
 
         // ------------------------------------------------------------

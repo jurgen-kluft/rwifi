@@ -11,16 +11,20 @@ namespace ncore
 {
     namespace nnet
     {
-        tcp_recv_plugin_t* new_handshake_plugin(tcp_recv_begin_fn on_handshake, tcp_recv_complete_fn on_complete, void* user_context);
+
+        tcp_recv_plugin_t* new_handshake_plugin(const byte* send_handshake_payload, u32 send_handshake_payload_size, tcp_recv_user_complete_fn on_complete, void* user_context);
         void               destroy_handshake_plugin(tcp_recv_plugin_t* plugin);
 
         // Download plugin for handling file downloads where the data is received in chunks
-        tcp_recv_plugin_t* new_download_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_context);
+        tcp_recv_plugin_t* new_download_plugin(tcp_recv_user_acquire_fn on_acquire, tcp_recv_user_complete_fn on_complete, void* user_context);
         void               destroy_download_plugin(tcp_recv_plugin_t* plugin);
 
         // Messages plugin for handling generic incoming messages
-        tcp_recv_plugin_t* new_messages_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_context);
+        // Note: Even if a message type is not recognized, the plugin still has to provide a buffer to receive the message payload, so the 
+        //       on_acquire callback is always called and expected to provide a buffer for the message payload. 
+        tcp_recv_plugin_t* new_messages_plugin(tcp_recv_user_acquire_fn on_acquire, tcp_recv_user_complete_fn on_complete, void* user_context);
         void               destroy_messages_plugin(tcp_recv_plugin_t* plugin);
+
 
     }  // namespace nnet
 }  // namespace ncore

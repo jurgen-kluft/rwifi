@@ -185,7 +185,7 @@ namespace ncore
                     c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin, msg_hdr, c.m_tcp_recv_buf);
                     c.m_tcp_recv_expected = 0;
                     c.m_tcp_recv_offset   = 0;
-                    c.m_tcp_recv_buf      = tcp_buffer_t{nullptr, 0};
+                    c.m_tcp_recv_buf      = buffer_t{nullptr, 0};
                 }
             }
         }

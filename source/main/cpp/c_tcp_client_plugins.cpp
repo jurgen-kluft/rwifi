@@ -28,12 +28,15 @@ namespace ncore
     {
         enum msg_types_t
         {
-            MSG_TYPE_HANDSHAKE      = 0x01,
-            MSG_TYPE_HANDSHAKE_ACK  = 0x02,
-            MSG_TYPE_DATA_INIT      = 0x03,
-            MSG_TYPE_DATA_INIT_ACK  = 0x04,
-            MSG_TYPE_DATA_BLOCK     = 0x05,
-            MSG_TYPE_DATA_BLOCK_ACK = 0x06
+            MSG_TYPE_HANDSHAKE            = 0x01,
+            MSG_TYPE_HANDSHAKE_ACK        = 0x02,
+            MSG_TYPE_HANDSHAKE_ACK_ACK    = 0x03,
+            MSG_TYPE_DATA_BLOCK_INIT      = 0x10,
+            MSG_TYPE_DATA_BLOCK_CHUNK     = 0x11,
+            MSG_TYPE_DATA_BLOCK_INIT_ACK  = 0x12,
+            MSG_TYPE_DATA_BLOCK_CHUNK_ACK = 0x13,
+            MSG_TYPE_HOUSE_META_DATA      = 0x20,
+            MSG_TYPE_HOUSE_DATA           = 0x21,
         };
 
         // 888    888        d8888 888b    888 8888888b.   .d8888b.  888    888        d8888 888    d8P  8888888888
@@ -46,19 +49,17 @@ namespace ncore
         // 888    888 d88P     888 888    Y888 8888888P"   "Y8888P"  888    888 d88P     888 888    Y88b 8888888888
 
         // Handshake mechanism:
-        // 1. ESP32 connects to the Mac over TCP, the Mac sends a handshake message (MSG_TYPE_HANDSHAKE_INITIATE) to the ESP32.
+        // 1. ESP32 connects to the Mac over TCP, the Mac sends a handshake message (MSG_TYPE_HANDSHAKE) to the ESP32
+        //    containing pairs of [asset type, asset version] that the Mac has available for download.
         // 2. The ESP32 receives the handshake message, processes it, and sends back a handshake acknowledgment
-        //    (MSG_TYPE_HANDSHAKE_ACK) to the Mac with its public key and other information.
+        //    (MSG_TYPE_HANDSHAKE_ACK) to the Mac with its own handshake response, which includes the asset types and
+        //    versions that the ESP32 is interested in downloading.
         // 3. The Mac receives the handshake acknowledgment, processes it, and sends back a handshake final acknowledgment
-        //    (MSG_TYPE_HANDSHAKE_FINAL_ACK) to the ESP32.
+        //    (MSG_TYPE_HANDSHAKE_ACK_ACK) to the ESP32.
 
         // Handshake message layout
         // - msg header
         // - payload
-
-#define MSG_TYPE_HANDSHAKE_INITIATE  0x01
-#define MSG_TYPE_HANDSHAKE_ACK       0x02
-#define MSG_TYPE_HANDSHAKE_FINAL_ACK 0x03
 
         // --- MSG TYPE 0x01: Handshake Initiate (Mac -> ESP32) ---
         struct handshake_initiate_t : public msg_hdr_t
@@ -80,52 +81,55 @@ namespace ncore
 
         struct handshake_plugin_data_t
         {
-            byte m_target_buffer[64];   // destination for the payload
-            u32  m_target_buffer_size;  // size of the target buffer
-            u32  m_data_type;           // Remember data type
+            void*                     m_user_ctx;
+            tcp_recv_user_acquire_fn  m_on_user_acquire;
+            tcp_recv_user_complete_fn m_on_user_complete;
+            byte                      m_target_buffer[64];   // destination for the payload
+            u32                       m_target_buffer_size;  // size of the target buffer
+            u32                       m_data_type;           // Remember data type
         };
 
-        bool handshake_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t* out)
+        bool handshake_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t* out)
         {
-            if (hdr->msg_type != MSG_TYPE_HANDSHAKE_INITIATE)
+            if (hdr->msg_type != MSG_TYPE_HANDSHAKE)
                 return false;  // Not a handshake initiate message
 
-            handshake_plugin_data_t* handshake_data = (handshake_plugin_data_t*)plugin->m_plugin_data;
+            handshake_plugin_data_t* plugin_data = (handshake_plugin_data_t*)plugin->m_plugin_data;
 
-            if (plugin->m_on_begin)
+            if (plugin_data->m_on_user_acquire)
             {
                 // The user will have to provide us with a buffer to receive the handshake payload
-                handshake_data->m_data_type = hdr->msg_type;
-                plugin->m_on_begin(plugin->m_user_ctx, hdr->msg_type, handshake_data->m_target_buffer_size, handshake_data->m_target_buffer);
+                plugin_data->m_data_type = hdr->msg_type;
+                plugin_data->m_on_user_acquire(plugin->m_user_ctx, hdr->msg_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
             }
 
-            out->m_buffer = handshake_data->m_target_buffer;
-            out->m_length = handshake_data->m_target_buffer_size;
+            out->m_buffer = plugin_data->m_target_buffer;
+            out->m_length = plugin_data->m_target_buffer_size;
 
             return true;  // Handled handshake ack message
         }
 
-        void handshake_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t buffer)
+        void handshake_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t buffer)
         {
-            if (hdr->msg_type != MSG_TYPE_HANDSHAKE_INITIATE)
+            if (hdr->msg_type != MSG_TYPE_HANDSHAKE)
                 return;  // Not a handshake initiate message
 
-            handshake_plugin_data_t* handshake_data = (handshake_plugin_data_t*)plugin->m_plugin_data;
+            handshake_plugin_data_t* plugin_data = (handshake_plugin_data_t*)plugin->m_plugin_data;
 
-            if (hdr->msg_type == MSG_TYPE_HANDSHAKE_INITIATE)
+            if (hdr->msg_type == MSG_TYPE_HANDSHAKE)
             {
                 // Process the handshake initiate message from the Mac, it will contain pairs
                 // of [asset type, asset version]
 
                 // Call the on_begin callback to notify the user that a new handshake initiate message has been received
-                handshake_data->m_target_buffer_size = 0;
-                if (plugin->m_on_begin)
+                plugin_data->m_target_buffer_size = 0;
+                if (plugin_data->m_on_user_acquire)
                 {
                     // The user will verify the handshake message, e.g., check the asset type and version
                     // It will also modify the target buffer with its own handshake response
-                    handshake_data->m_target_buffer_size = buffer.m_length;
-                    handshake_data->m_data_type          = hdr->msg_type;
-                    plugin->m_on_begin(plugin->m_user_ctx, hdr->msg_type, handshake_data->m_target_buffer_size, handshake_data->m_target_buffer);
+                    plugin_data->m_target_buffer_size = buffer.m_length;
+                    plugin_data->m_data_type          = hdr->msg_type;
+                    plugin_data->m_on_user_acquire(plugin->m_user_ctx, hdr->msg_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
                 }
 
                 // Prepare the handshake ack message
@@ -133,23 +137,23 @@ namespace ncore
                 handshake_ack_t ack_msg = (*(handshake_ack_t*)ack_msg_memory);
                 ack_msg.Magic           = 0xF00D;
                 ack_msg.Type            = MSG_TYPE_HANDSHAKE_ACK;
-                ack_msg.PayloadSize     = handshake_data->m_target_buffer_size;
+                ack_msg.PayloadSize     = plugin_data->m_target_buffer_size;
                 ack_msg.Checksum        = 0;  // No checksum
                 const u8* mac           = get_mac_address(plugin->m_wifi_mgr);
                 g_memcpy(ack_msg.Mac, mac, 6);
-                g_memcpy(ack_msg_memory + sizeof(handshake_ack_t), handshake_data->m_target_buffer, handshake_data->m_target_buffer_size);
+                g_memcpy(ack_msg_memory + sizeof(handshake_ack_t), plugin_data->m_target_buffer, plugin_data->m_target_buffer_size);
 
                 // Send the handshake ack message back to the Mac
-                nnet::send_later(plugin->m_client, ack_msg_memory, sizeof(handshake_ack_t) + handshake_data->m_target_buffer_size);
+                nnet::send_later(plugin->m_client, ack_msg_memory, sizeof(handshake_ack_t) + plugin_data->m_target_buffer_size);
             }
-            else if (hdr->msg_type == MSG_TYPE_HANDSHAKE_FINAL_ACK)
+            else if (hdr->msg_type == MSG_TYPE_HANDSHAKE_ACK_ACK)
             {
                 // Process the final ack message from the Mac
                 handshake_final_ack_t* final_ack = (handshake_final_ack_t*)buffer.m_buffer;
-                if (plugin->m_on_complete)
+                if (plugin->m_on_user_complete)
                 {
                     const u32 success = (final_ack->status == 0x01) ? 1 : 0;
-                    plugin->m_on_complete(plugin->m_on_complete_ctx, success, 0, nullptr);
+                    plugin->m_on_user_complete(plugin->m_on_complete_ctx, success, 0, nullptr);
                 }
             }
         }
@@ -169,9 +173,12 @@ namespace ncore
             plugin->m_acquire         = handshake_acquire_fn;
             plugin->m_commit          = handshake_commit_fn;
             plugin->m_abort           = handshake_abort_fn;
-            plugin->m_on_begin        = on_handshake;
-            plugin->m_on_complete_ctx = on_complete_ctx;
-            plugin->m_on_complete     = on_complete;
+
+            handshake_plugin_data_t* plugin_data = nsystem::calloc(sizeof(handshake_plugin_data_t));
+            plugin_data->m_on_user_acquire       = on_handshake;
+            plugin_data->m_on_complete_ctx       = on_complete_ctx;
+            plugin_data->m_on_user_complete      = on_complete;
+            plugin->m_plugin_data                = plugin_data;
 
             return plugin;
         }
@@ -193,14 +200,6 @@ namespace ncore
         // The ESP32 will acknowledge each block received, and the Mac will resend any block that is marked as corrupt or not acknowledged.
         // The ESP32 will reassemble the blocks into a complete data set in PSRAM, and then call the on_complete callback when all blocks
         // have been received and verified.
-
-        enum
-        {
-            DATA_BLOCK_INIT_MSG_TYPE      = 0x10,
-            DATA_BLOCK_CHUNK_MSG_TYPE     = 0x11,
-            DATA_BLOCK_INIT_ACK_MSG_TYPE  = 0x12,
-            DATA_BLOCK_CHUNK_ACK_MSG_TYPE = 0x13
-        };
 
         // --- MSG TYPE 0x10: Data Init (Mac -> ESP32) ---
         struct data_blocks_init_t
@@ -233,81 +232,84 @@ namespace ncore
 
         struct download_plugin_data_t
         {
-            byte* m_recv_buffer;         // PSRAM buffer for receiving blocks of data
-            byte* m_target_buffer;       // PSRAM destination for the full downloaded data
-            u32   m_target_buffer_size;  // Size of the PSRAM buffer
-            u32   m_total_blocks;        // Total number of blocks expected to be received
-            u32   m_received_blocks;     // Number of blocks received so far
-            u32   m_data_type;           // Remember data type
+            void*                     m_user_ctx;
+            tcp_recv_user_acquire_fn  m_on_user_acquire;
+            tcp_recv_user_complete_fn m_on_user_complete;
+            byte*                     m_recv_buffer;         // PSRAM buffer for receiving blocks of data
+            byte*                     m_target_buffer;       // PSRAM destination for the full downloaded data
+            u32                       m_target_buffer_size;  // Size of the PSRAM buffer
+            u32                       m_total_blocks;        // Total number of blocks expected to be received
+            u32                       m_received_blocks;     // Number of blocks received so far
+            u32                       m_data_type;           // Remember data type
         };
 
-        bool download_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, tcp_buffer_t* out_buffer)
+        bool download_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, buffer_t* out_buffer)
         {
-            if (in_hdr->msg_type != DATA_BLOCK_INIT_MSG_TYPE && in_hdr->msg_type != DATA_BLOCK_CHUNK_MSG_TYPE)
+            if (in_hdr->msg_type != MSG_TYPE_DATA_BLOCK_INIT && in_hdr->msg_type != MSG_TYPE_DATA_BLOCK_CHUNK)
                 return false;  // Not a download message
 
-            download_plugin_data_t* download_data = (download_plugin_data_t*)plugin->m_plugin_data;
+            download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
 
-            if (in_hdr->msg_type == DATA_BLOCK_INIT_MSG_TYPE)
+            if (in_hdr->msg_type == MSG_TYPE_DATA_BLOCK_INIT)
             {
                 ASSERT(in_hdr->payload_len == sizeof(data_blocks_init_t));
                 data_blocks_init_t* init_payload = (data_blocks_init_t*)plugin->m_plugin_data;
 
                 // Allocate buffer for receiving blocks
-                download_data->m_recv_buffer = (byte*)nsystem::malloc(init_payload->block_size + sizeof(data_block_header_t));
+                plugin_data->m_recv_buffer = (byte*)nsystem::malloc(init_payload->block_size + sizeof(data_block_header_t));
 
-                out_buffer->m_buffer = download_data->m_recv_buffer;
+                out_buffer->m_buffer = plugin_data->m_recv_buffer;
                 out_buffer->m_length = in_hdr->payload_len;
             }
-            else if (in_hdr->msg_type == DATA_BLOCK_CHUNK_MSG_TYPE)
+            else if (in_hdr->msg_type == MSG_TYPE_DATA_BLOCK_CHUNK)
             {
                 ASSERT(in_hdr->payload_len >= sizeof(data_block_header_t));
-                out_buffer->m_buffer = download_data->m_recv_buffer;
+                out_buffer->m_buffer = plugin_data->m_recv_buffer;
                 out_buffer->m_length = in_hdr->payload_len;  // Should be sizeof(payload_download_t)
             }
 
             return true;  // Handled download message
         }
 
-        void download_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t buffer)
+        void download_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t buffer)
         {
-            download_plugin_data_t* download_data = (download_plugin_data_t*)plugin->m_plugin_data;
+            download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
 
-            if (hdr->msg_type == DATA_BLOCK_INIT_MSG_TYPE)
+            if (hdr->msg_type == MSG_TYPE_DATA_BLOCK_INIT)
             {
-                data_blocks_init_t* init_payload    = (data_blocks_init_t*)buffer.m_buffer;
-                download_data->m_data_type          = init_payload->data_type;
-                download_data->m_target_buffer_size = init_payload->total_size;
+                data_blocks_init_t* init_payload  = (data_blocks_init_t*)buffer.m_buffer;
+                plugin_data->m_data_type          = init_payload->data_type;
+                plugin_data->m_target_buffer_size = init_payload->total_size;
 
-                plugin->m_on_begin(plugin->m_user_ctx, download_data->m_data_type, download_data->m_target_buffer_size, download_data->m_target_buffer);
+                plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
 
                 data_blocks_init_ack_t ack_msg;
                 ack_msg.Magic       = 0xF00D;
-                ack_msg.Type        = DATA_BLOCK_INIT_ACK_MSG_TYPE;
+                ack_msg.Type        = MSG_TYPE_DATA_BLOCK_INIT_ACK;
                 ack_msg.PayloadSize = sizeof(data_blocks_init_ack_t) - sizeof(msg_hdr_t);
-                ack_msg.Checksum    = 0;                                               // No checksum
-                ack_msg.Status      = (download_data->m_target_buffer) ? 0x01 : 0x00;  // 0x01 = Ready to receive, 0x00 = Out of memory/Error
+                ack_msg.Checksum    = 0;                                             // No checksum
+                ack_msg.Status      = (plugin_data->m_target_buffer) ? 0x01 : 0x00;  // 0x01 = Ready to receive, 0x00 = Out of memory/Error
 
                 const u8* mac = get_mac_address(plugin->m_wifi_mgr);
                 g_memcpy(ack_msg.Mac, mac, 6);
 
                 nnet::send_later(*plugin->m_client, (byte*)&ack_msg, sizeof(data_blocks_init_ack_t));
             }
-            else if (hdr->msg_type == DATA_BLOCK_CHUNK_MSG_TYPE)
+            else if (hdr->msg_type == MSG_TYPE_DATA_BLOCK_CHUNK)
             {
                 data_block_header_t* block_header = (data_block_header_t*)buffer.m_buffer;
                 const byte*          data         = buffer.m_buffer + sizeof(data_block_header_t);
 
                 // Copy the received block into the target buffer at the specified offset
-                if (download_data->m_target_buffer && block_header->file_offset + block_header->block_size <= download_data->m_target_buffer_size)
+                if (plugin_data->m_target_buffer && block_header->file_offset + block_header->block_size <= plugin_data->m_target_buffer_size)
                 {
                     // TODO; Verify the block integrity here (e.g., checksum) before copying it to the target buffer.
 
-                    g_memcpy(download_data->m_target_buffer + block_header->file_offset, data, block_header->block_size);
+                    g_memcpy(plugin_data->m_target_buffer + block_header->file_offset, data, block_header->block_size);
 
                     data_block_ack_t ack_msg;
                     ack_msg.Magic       = 0xF00D;
-                    ack_msg.Type        = DATA_BLOCK_ACK_MSG_TYPE;
+                    ack_msg.Type        = MSG_TYPE_DATA_BLOCK_CHUNK_ACK;
                     ack_msg.PayloadSize = sizeof(data_block_ack_t) - sizeof(msg_hdr_t);
                     ack_msg.Checksum    = 0;  // No checksum
                     ack_msg.BlockIndex  = block_header->block_index;
@@ -318,23 +320,23 @@ namespace ncore
 
                     nnet::send_later(*plugin->m_client, (byte*)&ack_msg, sizeof(data_block_ack_t));
 
-                    download_data->m_received_blocks++;
+                    plugin_data->m_received_blocks++;
                 }
 
                 // Was this the last block? If so, call the on_complete callback
-                if (download_data->m_received_blocks == download_data->m_total_blocks)
+                if (plugin_data->m_received_blocks == plugin_data->m_total_blocks)
                 {
-                    if (plugin->m_on_complete)
+                    if (plugin->m_on_user_complete)
                     {
-                        plugin->m_on_complete(plugin->m_user_ctx, download_data->m_data_type, download_data->m_target_buffer_size, download_data->m_target_buffer);
+                        plugin->m_on_user_complete(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
 
                         // We are done downloading, so we can free the receive buffer.
-                        nsystem::free(download_data->m_recv_buffer);
-                        download_data->m_recv_buffer = nullptr;
+                        nsystem::free(plugin_data->m_recv_buffer);
+                        plugin_data->m_recv_buffer = nullptr;
 
                         // The target buffer is now owned by the user and should be freed by them when done.
-                        download_data->m_target_buffer      = nullptr;
-                        download_data->m_target_buffer_size = 0;
+                        plugin_data->m_target_buffer      = nullptr;
+                        plugin_data->m_target_buffer_size = 0;
                     }
                 }
             }
@@ -343,17 +345,17 @@ namespace ncore
         void download_abort_fn(tcp_recv_plugin_t* plugin)
         {
             // Handle any cleanup or state reset if the handshake is aborted
-            download_plugin_data_t* download_data = (download_plugin_data_t*)plugin->m_plugin_data;
-            if (download_data->m_recv_buffer)
+            download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
+            if (plugin_data->m_recv_buffer)
             {
-                nsystem::free(download_data->m_recv_buffer);
-                download_data->m_recv_buffer = nullptr;
+                nsystem::free(plugin_data->m_recv_buffer);
+                plugin_data->m_recv_buffer = nullptr;
             }
-            if (download_data->m_target_buffer)
+            if (plugin_data->m_target_buffer)
             {
-                nsystem::free(download_data->m_target_buffer);
-                download_data->m_target_buffer      = nullptr;
-                download_data->m_target_buffer_size = 0;
+                nsystem::free(plugin_data->m_target_buffer);
+                plugin_data->m_target_buffer      = nullptr;
+                plugin_data->m_target_buffer_size = 0;
             }
         }
 
@@ -362,6 +364,9 @@ namespace ncore
         tcp_recv_plugin_t* new_download_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_ctx)
         {
             download_plugin_data_t* data = (download_plugin_data_t*)nsystem::calloc(sizeof(download_plugin_data_t));
+            data->m_user_ctx             = user_ctx;
+            data->m_on_user_acquire      = on_begin;
+            data->m_on_user_complete     = on_complete;
             data->m_recv_buffer          = nullptr;  // Buffer for receiving blocks of data
             data->m_target_buffer        = nullptr;  // Destination will be set when receiving the first block
             data->m_target_buffer_size   = 0;
@@ -373,22 +378,19 @@ namespace ncore
             plugin->m_acquire         = download_acquire_fn;
             plugin->m_commit          = download_commit_fn;
             plugin->m_abort           = download_abort_fn;
-            plugin->m_user_ctx        = user_ctx;
-            plugin->m_on_begin        = on_begin;
-            plugin->m_on_complete     = on_complete;
             return plugin;
         }
 
         void destroy_download_plugin(tcp_recv_plugin_t* plugin)
         {
-            download_plugin_data_t* download_data = (download_plugin_data_t*)plugin->m_plugin_data;
-            if (download_data->m_recv_buffer)
+            download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
+            if (plugin_data->m_recv_buffer)
             {
-                nsystem::free(download_data->m_recv_buffer);
-                download_data->m_recv_buffer = nullptr;
+                nsystem::free(plugin_data->m_recv_buffer);
+                plugin_data->m_recv_buffer = nullptr;
             }
 
-            nsystem::free(download_data);
+            nsystem::free(plugin_data);
             nsystem::free(plugin);
         }
 
@@ -403,52 +405,55 @@ namespace ncore
 
         struct message_plugin_data_t
         {
-            byte* m_target_buffer;       // Final destination for a message
-            u32   m_target_buffer_size;  // Size of the PSRAM buffer
-            u32   m_data_type;           // Remember data type
+            void*                     m_user_ctx;
+            tcp_recv_user_acquire_fn  m_on_user_acquire;
+            tcp_recv_user_complete_fn m_on_user_complete;
+            byte*                     m_target_buffer;       // Final destination for a message
+            u32                       m_target_buffer_size;  // Size of the PSRAM buffer
+            u32                       m_data_type;           // Remember data type
         };
 
-        bool message_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, tcp_buffer_t* out_buffer)
+        bool message_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, buffer_t* out_buffer)
         {
-            message_plugin_data_t* message_data = (message_plugin_data_t*)plugin->m_plugin_data;
-            message_data->m_data_type           = in_hdr->m_data_type;
-            message_data->m_target_buffer       = nullptr;
-            message_data->m_target_buffer_size  = in_hdr->PayloadSize;
+            message_plugin_data_t* plugin_data = (message_plugin_data_t*)plugin->m_plugin_data;
+            plugin_data->m_data_type           = in_hdr->m_data_type;
+            plugin_data->m_target_buffer       = nullptr;
+            plugin_data->m_target_buffer_size  = in_hdr->PayloadSize;
 
-            plugin->m_on_begin(plugin->m_user_ctx, message_data->m_data_type, message_data->m_target_buffer_size, message_data->m_target_buffer);
+            plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
 
-            out_buffer->m_data      = message_data->m_target_buffer;
-            out_buffer->m_data_size = message_data->m_target_buffer_size;
+            out_buffer->m_data      = plugin_data->m_target_buffer;
+            out_buffer->m_data_size = plugin_data->m_target_buffer_size;
 
             return true;  // Handled download message
         }
 
-        void message_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, tcp_buffer_t buffer)
+        void message_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t buffer)
         {
-            message_plugin_data_t* message_data = (message_plugin_data_t*)plugin->m_plugin_data;
-            plugin->m_on_complete(plugin->m_user_ctx, message_data->m_data_type, buffer.m_data_size, buffer.m_data);
-            message_data->m_target_buffer      = nullptr;
-            message_data->m_target_buffer_size = 0;
+            message_plugin_data_t* plugin_data = (message_plugin_data_t*)plugin->m_plugin_data;
+            plugin_data->m_on_user_complete(plugin->m_user_ctx, plugin_data->m_data_type, buffer.m_data_size, buffer.m_data);
+            plugin_data->m_target_buffer      = nullptr;
+            plugin_data->m_target_buffer_size = 0;
         }
 
         void message_abort_fn(tcp_recv_plugin_t* plugin)
         {
-            message_plugin_data_t* message_data = (message_plugin_data_t*)plugin->m_plugin_data;
-            message_data->m_target_buffer       = nullptr;
-            message_data->m_target_buffer_size  = 0;
+            message_plugin_data_t* plugin_data = (message_plugin_data_t*)plugin->m_plugin_data;
+            plugin_data->m_target_buffer       = nullptr;
+            plugin_data->m_target_buffer_size  = 0;
         }
 
         tcp_recv_plugin_t* new_messages_plugin(tcp_recv_begin_fn on_begin, tcp_recv_complete_fn on_complete, void* user_ctx)
         {
-            message_plugin_data_t* data   = (message_plugin_data_t*)nsystem::malloc(sizeof(message_plugin_data_t));
-            tcp_recv_plugin_t*     plugin = (tcp_recv_plugin_t*)nsystem::malloc(sizeof(tcp_recv_plugin_t));
-            plugin->m_plugin_data         = data;
-            plugin->m_acquire             = message_acquire_fn;
-            plugin->m_commit              = message_commit_fn;
-            plugin->m_abort               = message_abort_fn;
-            plugin->m_user_ctx            = user_ctx;
-            plugin->m_on_begin            = on_begin;
-            plugin->m_on_complete         = on_complete;
+            message_plugin_data_t* data = (message_plugin_data_t*)nsystem::malloc(sizeof(message_plugin_data_t));
+            data->m_user_ctx            = user_ctx;
+            data->m_on_user_acquire     = on_begin;
+            data->m_on_user_complete    = on_complete;
+            tcp_recv_plugin_t* plugin   = (tcp_recv_plugin_t*)nsystem::malloc(sizeof(tcp_recv_plugin_t));
+            plugin->m_plugin_data       = data;
+            plugin->m_acquire           = message_acquire_fn;
+            plugin->m_commit            = message_commit_fn;
+            plugin->m_abort             = message_abort_fn;
             return plugin;
         }
 
