@@ -73,7 +73,7 @@ namespace ncore
                 c.m_backoff_ms        = c.m_config_timing.m_backoff_initial_ms;
                 c.m_tcp_recv_expected = 0;
                 c.m_tcp_recv_offset   = 0;
-                c.m_tcp_recv_buf      = {0, 0};
+                c.m_tcp_recv_buffer   = {0, 0};
 
                 if (c.m_last_state == TCP_STATE_CONNECTING && c.m_on_connected != nullptr)
                     c.m_on_connected(c.m_on_connected_user);
@@ -98,94 +98,117 @@ namespace ncore
             }
         }
 
+        enum eread_state_t
+        {
+            READ_STATE_IDLE,
+            READ_STATE_HEADER,
+            READ_STATE_PARTS,
+            READ_STATE_ABORT
+        };
+
+        static void s_abort(tcp_client_t& c)
+        {
+            if (c.m_tcp_recv_buffer.m_buffer && c.m_tcp_recv_active_plugin != nullptr)
+            {
+                if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
+                    c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
+                c.m_tcp_recv_active_plugin = nullptr;
+                c.m_tcp_recv_expected      = 0;
+                c.m_tcp_recv_offset        = 0;
+                c.m_tcp_recv_part          = -1;
+                c.m_tcp_recv_buffer        = {0, 0};
+            }
+        }
+
+        // Receiving and processing incoming TCP data:
+        // - message header is fixed (16 bytes)
+        // - message body follows the header and may be received in multiple parts
+        //
+        // This approach allows the user to handle incoming messages in a structured 
+        // manner, processing headers and body parts separately.
+        // So this allows the user to have an additional header right after the main 
+        // message header which may provide more information about the payload.
+
         static void s_poll_connected(tcp_client_t& c)
         {
             if (!c.m_config_sock_ops.m_connected(c.m_socket))
             {
-                if (c.m_tcp_recv_buf.m_buffer && c.m_tcp_recv_active_plugin != nullptr)
-                {
-                    if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
-                        c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
-                    c.m_tcp_recv_active_plugin = nullptr;
-                    c.m_tcp_recv_expected      = 0;
-                    c.m_tcp_recv_offset        = 0;
-                }
+                s_abort(c);
 
                 // Notify the user of disconnection if we were previously connected
                 if (c.m_on_disconnected)
                     c.m_on_disconnected(c.m_on_disconnected_user);
 
-                c.m_tcp_recv_buf = {0, 0};
                 c.m_config_sock_ops.m_stop(c.m_socket);
                 s_enter_backoff(c);
                 return;
             }
 
+            eread_state_t read_state = READ_STATE_IDLE;
             while (c.m_config_sock_ops.m_available(c.m_socket) > 0)
             {
                 msg_hdr_t* msg_hdr      = (msg_hdr_t*)c.m_tcp_recv_header;
                 const i32  msg_hdr_size = (i32)sizeof(msg_hdr_t);
 
-                if (c.m_tcp_recv_expected == 0)
+                if (read_state == READ_STATE_IDLE)
                 {
                     if (c.m_config_sock_ops.m_available(c.m_socket) < msg_hdr_size)
                         return;
 
                     if (c.m_config_sock_ops.m_read(c.m_socket, msg_hdr, msg_hdr_size) < 0)
                     {
-                        if (c.m_tcp_recv_active_plugin != nullptr && c.m_tcp_recv_active_plugin->m_abort != nullptr)
-                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
-                        c.m_tcp_recv_active_plugin = nullptr;
-                        c.m_tcp_recv_expected      = 0;
-                        c.m_tcp_recv_offset        = 0;
+                        s_abort(c);
+                        read_state = READ_STATE_IDLE;
                         return;
                     }
 
-                    // Plugin: Which plugin will handle this message?
-                    // Request a buffer for the payload from the plugin.
-                    // The last plugin in the array is one that always returns a buffer, so we
-                    // will always have a buffer to receive the payload. However, that plugin
-                    // is a "catch-all and ignore" plugin that will handle any message type that
-                    // is not handled by the other plugins.
-                    c.m_tcp_recv_offset = 0;
                     for (u32 plugin_index = 0; plugin_index < 8; ++plugin_index)
                     {
                         tcp_recv_plugin_t* plugin = c.m_tcp_recv_plugins[plugin_index];
                         if (plugin == nullptr)
                             continue;
-                        if (plugin->m_acquire(plugin, msg_hdr, &c.m_tcp_recv_buf))
+                        c.m_tcp_recv_part = plugin->m_acquire(plugin, msg_hdr, &c.m_tcp_recv_buffer);
+                        if (c.m_tcp_recv_part >= 0 && c.m_tcp_recv_buffer.m_buffer != nullptr)
                         {
                             c.m_tcp_recv_active_plugin = plugin;
-                            c.m_tcp_recv_expected      = msg_hdr->payload_len;
+                            c.m_tcp_recv_expected      = c.m_tcp_recv_buffer.m_length;
+                            c.m_tcp_recv_offset        = 0;
+                            read_state                 = READ_STATE_PARTS;
                             break;
                         }
-                    }
 
-                    if (!c.m_tcp_recv_buf.m_buffer)
-                    {
-                        if (c.m_tcp_recv_active_plugin != nullptr && c.m_tcp_recv_active_plugin->m_abort)
-                        {
-                            c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
-                            c.m_tcp_recv_active_plugin = nullptr;
-                        }
-                        c.m_tcp_recv_expected = 0;
+                        // An error has occured, handle it
+                        s_abort(c);
+                        read_state = READ_STATE_IDLE;
                         return;
                     }
-                }
 
-                const u32 remaining = c.m_tcp_recv_expected - c.m_tcp_recv_offset;
-                const u32 avail     = (u32)c.m_config_sock_ops.m_available(c.m_socket);
-                const u32 chunk     = remaining < avail ? remaining : avail;
+                    if (read_state == READ_STATE_PARTS)
+                    {
+                        const u32 remaining = c.m_tcp_recv_expected - c.m_tcp_recv_offset;
+                        const u32 avail     = (u32)c.m_config_sock_ops.m_available(c.m_socket);
+                        const u32 chunk     = remaining < avail ? remaining : avail;
 
-                c.m_config_sock_ops.m_read(c.m_socket, c.m_tcp_recv_buf.m_buffer + c.m_tcp_recv_offset, chunk);
-                c.m_tcp_recv_offset += chunk;
+                        c.m_config_sock_ops.m_read(c.m_socket, c.m_tcp_recv_buffer.m_buffer + c.m_tcp_recv_offset, chunk);
+                        c.m_tcp_recv_offset += chunk;
 
-                if (c.m_tcp_recv_offset == c.m_tcp_recv_expected)
-                {
-                    c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin, msg_hdr, c.m_tcp_recv_buf);
-                    c.m_tcp_recv_expected = 0;
-                    c.m_tcp_recv_offset   = 0;
-                    c.m_tcp_recv_buf      = buffer_t{nullptr, 0};
+                        if (c.m_tcp_recv_offset == c.m_tcp_recv_expected)
+                        {
+                            c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin, msg_hdr, c.m_tcp_recv_buffer);
+                            if (c.m_tcp_recv_part == 0)
+                            {
+                                c.m_tcp_recv_part     = -1;
+                                c.m_tcp_recv_expected = 0;
+                                c.m_tcp_recv_offset   = 0;
+                                c.m_tcp_recv_buffer   = buffer_t{nullptr, 0};
+                            }
+                            else
+                            {
+                                // Then request another buffer for the next part
+                                c.m_tcp_recv_part = c.m_tcp_recv_active_plugin->m_acquire(c.m_tcp_recv_active_plugin, msg_hdr, c.m_tcp_recv_buffer);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -236,7 +259,7 @@ namespace ncore
             c.m_tcp_recv_active_plugin = nullptr;
             c.m_tcp_recv_expected      = 0;
             c.m_tcp_recv_offset        = 0;
-            c.m_tcp_recv_buf           = {nullptr, 0};
+            c.m_tcp_recv_buffer        = {nullptr, 0};
         }
 
         void register_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin)
@@ -247,11 +270,11 @@ namespace ncore
             c.m_tcp_recv_plugin_ctx[id] = &c;
         }
 
-        tcp_recv_plugin_t* get_plugin(tcp_client_t& c, u8 id) 
+        tcp_recv_plugin_t* get_plugin(tcp_client_t& c, u8 id)
         {
             if (id >= 8)
                 return nullptr;
-            return c.m_tcp_recv_plugins[id]; 
+            return c.m_tcp_recv_plugins[id];
         }
 
         void unregister_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin)
@@ -288,7 +311,7 @@ namespace ncore
             if (!c.m_enabled)
                 return;
 
-            if (c.m_tcp_recv_buf.m_buffer != nullptr && c.m_tcp_recv_active_plugin != nullptr)
+            if (c.m_tcp_recv_buffer.m_buffer != nullptr && c.m_tcp_recv_active_plugin != nullptr)
             {
                 if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
                     c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
@@ -297,7 +320,7 @@ namespace ncore
                 c.m_tcp_recv_offset        = 0;
             }
 
-            c.m_tcp_recv_buf = {nullptr, 0};
+            c.m_tcp_recv_buffer = {nullptr, 0};
 
             if (c.m_state == TCP_STATE_CONNECTED)
             {

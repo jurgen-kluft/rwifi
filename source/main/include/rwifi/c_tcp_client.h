@@ -43,10 +43,14 @@ namespace ncore
         struct tcp_recv_plugin_t;
         struct tcp_client_t;
 
-        typedef bool (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t* out);
+        // TCP receive plugin function pointer typedefs
+        // Acquire; return > 0 if the plugin still need to handle more parts
+        //          return 0 if this is the last part of the message
+        //          return negative value if an error occurred
+        typedef i32 (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t* out_buffer);
         typedef void (*tcp_recv_commit_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t buffer);
         typedef void (*tcp_recv_abort_fn)(tcp_recv_plugin_t* plugin);
-        typedef void (*tcp_recv_user_acquire_fn)(void* on_acquire_context, u32 data_type, buffer_t& in_out_buffer);
+        typedef void (*tcp_recv_user_acquire_fn)(void* on_acquire_context, u32 data_type, buffer_t& out_buffer);
         typedef void (*tcp_recv_user_complete_fn)(void* on_complete_context, u32 data_type, buffer_t buffer);
 
         // ------------------------------------------------------------
@@ -54,9 +58,7 @@ namespace ncore
         // ------------------------------------------------------------
 
         struct time_ops_t
-        {
-            millis_fn m_millis;
-        };
+        { millis_fn m_millis; };
 
         void setup_default(time_ops_t* ops);
 
@@ -74,12 +76,12 @@ namespace ncore
 
         struct tcp_recv_plugin_t
         {
-            wifi_manager_t*           m_wifi_mgr;
-            tcp_client_t*             m_client;
-            tcp_recv_acquire_fn       m_acquire;
-            tcp_recv_commit_fn        m_commit;
-            tcp_recv_abort_fn         m_abort;
-            void*                     m_plugin_data;
+            wifi_manager_t*     m_wifi_mgr;
+            tcp_client_t*       m_client;
+            tcp_recv_acquire_fn m_acquire;
+            tcp_recv_commit_fn  m_commit;
+            tcp_recv_abort_fn   m_abort;
+            void*               m_plugin_data;
         };
 
         struct tcp_timing_t
@@ -148,10 +150,11 @@ namespace ncore
             tcp_recv_plugin_t* m_tcp_recv_plugins[8];  // Max 8 plugins
             void*              m_tcp_recv_plugin_ctx[8];
             tcp_recv_plugin_t* m_tcp_recv_active_plugin;
-            u32                m_tcp_recv_expected;
-            u32                m_tcp_recv_offset;
-            u8                 m_tcp_recv_header[16];  // Must be at least sizeof(msg_hdr_t)
-            buffer_t       m_tcp_recv_buf;
+            u32                m_tcp_recv_expected;    // Expected size of the incoming payload
+            u32                m_tcp_recv_offset;      // Current offset in the receive buffer
+            u8                 m_tcp_recv_header[24];  // Must be at least sizeof(msg_hdr_t)
+            i32                m_tcp_recv_part;        //
+            buffer_t           m_tcp_recv_buffer;      //
         };
 
         // ------------------------------------------------------------

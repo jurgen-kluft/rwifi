@@ -11,8 +11,7 @@ namespace ncore
 {
     namespace nnet
     {
-
-        tcp_recv_plugin_t* new_handshake_plugin(const byte* send_handshake_payload, u32 send_handshake_payload_size, tcp_recv_user_complete_fn on_complete, void* user_context);
+        tcp_recv_plugin_t* new_handshake_plugin(const byte* handshake_payload, u32 handshake_payload_size, tcp_recv_user_complete_fn on_complete, void* user_context);
         void               destroy_handshake_plugin(tcp_recv_plugin_t* plugin);
 
         // Download plugin for handling file downloads where the data is received in chunks
