@@ -81,28 +81,29 @@ namespace ncore
 
         bool download_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, buffer_t* out_buffer)
         {
-            download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
-
-            if (in_hdr->msg_type == MSG_TYPE_DOWNLOAD_INFO)
+            if (in_hdr->Type == MSG_TYPE_DOWNLOAD_INFO)
             {
-                ASSERT(in_hdr->payload_len == sizeof(download_info_t));
+                download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
+                ASSERT(in_hdr->PayloadSize == sizeof(download_info_t));
                 out_buffer->m_buffer           = &plugin_data->m_download_info;
                 out_buffer->m_length           = sizeof(plugin_data->m_download_info);
                 plugin_data->m_received_blocks = 0;
                 return true;
             }
-            else if (in_hdr->msg_type == MSG_TYPE_DOWNLOAD_BLOCK_INFO)
+            else if (in_hdr->Type == MSG_TYPE_DOWNLOAD_BLOCK_INFO)
             {
-                ASSERT(in_hdr->payload_len == sizeof(download_block_info_t));
+                download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
+                ASSERT(in_hdr->PayloadSize == sizeof(download_block_info_t));
                 out_buffer->m_buffer = &plugin_data->m_block_info;
                 out_buffer->m_length = sizeof(plugin_data->m_block_info);
                 return true;
             }
-            else if (in_hdr->msg_type == MSG_TYPE_DOWNLOAD_BLOCK_DATA)
+            else if (in_hdr->Type == MSG_TYPE_DOWNLOAD_BLOCK_DATA)
             {
-                ASSERT(in_hdr->payload_len == plugin_data->m_block_info.block_size);
+                download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
+                ASSERT(in_hdr->PayloadSize == plugin_data->m_block_info.block_size);
                 out_buffer->m_buffer = plugin_data->m_target_buffer + plugin_data->m_block_info.file_offset;
-                out_buffer->m_length = in_hdr->payload_len;
+                out_buffer->m_length = in_hdr->PayloadSize;
                 return true;
             }
 
@@ -113,7 +114,7 @@ namespace ncore
         {
             download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
 
-            if (hdr->msg_type == MSG_TYPE_DOWNLOAD_INFO)
+            if (hdr->Type == MSG_TYPE_DOWNLOAD_INFO)
             {
                 // Extract download information from the received payload, which is our full download information.
                 // This tells us the full size of the download, and the number of blocks that will be needed to
@@ -123,11 +124,11 @@ namespace ncore
                 plugin_data->m_target_buffer_size = info->total_size;
                 plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
             }
-            else if (hdr->msg_type == MSG_TYPE_DOWNLOAD_BLOCK_INFO)
+            else if (hdr->Type == MSG_TYPE_DOWNLOAD_BLOCK_INFO)
             {
                 // downloaded in plugin_data->m_block_info
             }
-            else if (hdr->msg_type == MSG_TYPE_DOWNLOAD_BLOCK_DATA)
+            else if (hdr->Type == MSG_TYPE_DOWNLOAD_BLOCK_DATA)
             {
                 // Note: block data is downloaded directly into the target buffer, and here we are informed that
                 //       a block has been received.
@@ -211,16 +212,19 @@ namespace ncore
         bool message_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, buffer_t* out_buffer)
         {
             message_plugin_data_t* plugin_data = (message_plugin_data_t*)plugin->m_plugin_data;
-            plugin_data->m_data_type           = in_hdr->m_data_type;
+            plugin_data->m_data_type           = in_hdr->Type;
             plugin_data->m_target_buffer       = nullptr;
             plugin_data->m_target_buffer_size  = in_hdr->PayloadSize;
 
-            plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
+            if (plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer))
+            {
+                out_buffer->m_data      = plugin_data->m_target_buffer;
+                out_buffer->m_data_size = plugin_data->m_target_buffer_size;
 
-            out_buffer->m_data      = plugin_data->m_target_buffer;
-            out_buffer->m_data_size = plugin_data->m_target_buffer_size;
+                return true;  // Handled download message}
+            }
 
-            return true;  // Handled download message
+            return false;  // Failed to acquire message
         }
 
         void message_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t buffer)
