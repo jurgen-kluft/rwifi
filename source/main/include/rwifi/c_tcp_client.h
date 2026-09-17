@@ -47,11 +47,12 @@ namespace ncore
         // Acquire; return > 0 if the plugin still need to handle more parts
         //          return 0 if this is the last part of the message
         //          return negative value if an error occurred
-        typedef i32 (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t* out_buffer);
+        typedef bool (*tcp_recv_acquire_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t* out_buffer);
         typedef void (*tcp_recv_commit_fn)(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t buffer);
         typedef void (*tcp_recv_abort_fn)(tcp_recv_plugin_t* plugin);
-        typedef void (*tcp_recv_user_acquire_fn)(void* on_acquire_context, u32 data_type, buffer_t& out_buffer);
+        typedef void (*tcp_recv_user_acquire_fn)(void* on_acquire_context, u32 data_type, u32 data_size, buffer_t& out_buffer);
         typedef void (*tcp_recv_user_complete_fn)(void* on_complete_context, u32 data_type, buffer_t buffer);
+        typedef void (*tcp_recv_user_abort_fn)(void* on_abort_context, u32 data_type, buffer_t buffer);
 
         // ------------------------------------------------------------
         // Ops groupings
@@ -150,11 +151,10 @@ namespace ncore
             tcp_recv_plugin_t* m_tcp_recv_plugins[8];  // Max 8 plugins
             void*              m_tcp_recv_plugin_ctx[8];
             tcp_recv_plugin_t* m_tcp_recv_active_plugin;
-            u32                m_tcp_recv_expected;    // Expected size of the incoming payload
-            u32                m_tcp_recv_offset;      // Current offset in the receive buffer
-            u8                 m_tcp_recv_header[24];  // Must be at least sizeof(msg_hdr_t)
-            i32                m_tcp_recv_part;        //
-            buffer_t           m_tcp_recv_buffer;      //
+            u32                m_tcp_recv_payload_size;  // Size of the incoming payload
+            u32                m_tcp_recv_offset;        // Current offset in the receive buffer
+            u8                 m_tcp_recv_header[24];    // Must be at least sizeof(msg_hdr_t)
+            buffer_t           m_tcp_recv_buffer;        //
         };
 
         // ------------------------------------------------------------

@@ -68,12 +68,12 @@ namespace ncore
         {
             if (c.m_config_sock_ops.m_connected(c.m_socket))
             {
-                c.m_last_state        = c.m_state;
-                c.m_state             = TCP_STATE_CONNECTED;
-                c.m_backoff_ms        = c.m_config_timing.m_backoff_initial_ms;
-                c.m_tcp_recv_expected = 0;
-                c.m_tcp_recv_offset   = 0;
-                c.m_tcp_recv_buffer   = {0, 0};
+                c.m_last_state            = c.m_state;
+                c.m_state                 = TCP_STATE_CONNECTED;
+                c.m_backoff_ms            = c.m_config_timing.m_backoff_initial_ms;
+                c.m_tcp_recv_payload_size = 0;
+                c.m_tcp_recv_offset       = 0;
+                c.m_tcp_recv_buffer       = {0, 0};
 
                 if (c.m_last_state == TCP_STATE_CONNECTING && c.m_on_connected != nullptr)
                     c.m_on_connected(c.m_on_connected_user);
@@ -102,7 +102,7 @@ namespace ncore
         {
             READ_STATE_IDLE,
             READ_STATE_HEADER,
-            READ_STATE_PARTS,
+            READ_STATE_PAYLOAD,
             READ_STATE_ABORT
         };
 
@@ -113,9 +113,8 @@ namespace ncore
                 if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
                     c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                 c.m_tcp_recv_active_plugin = nullptr;
-                c.m_tcp_recv_expected      = 0;
+                c.m_tcp_recv_payload_size  = 0;
                 c.m_tcp_recv_offset        = 0;
-                c.m_tcp_recv_part          = -1;
                 c.m_tcp_recv_buffer        = {0, 0};
             }
         }
@@ -124,9 +123,9 @@ namespace ncore
         // - message header is fixed (16 bytes)
         // - message body follows the header and may be received in multiple parts
         //
-        // This approach allows the user to handle incoming messages in a structured 
+        // This approach allows the user to handle incoming messages in a structured
         // manner, processing headers and body parts separately.
-        // So this allows the user to have an additional header right after the main 
+        // So this allows the user to have an additional header right after the main
         // message header which may provide more information about the payload.
 
         static void s_poll_connected(tcp_client_t& c)
@@ -167,13 +166,12 @@ namespace ncore
                         tcp_recv_plugin_t* plugin = c.m_tcp_recv_plugins[plugin_index];
                         if (plugin == nullptr)
                             continue;
-                        c.m_tcp_recv_part = plugin->m_acquire(plugin, msg_hdr, &c.m_tcp_recv_buffer);
-                        if (c.m_tcp_recv_part >= 0 && c.m_tcp_recv_buffer.m_buffer != nullptr)
+                        if (plugin->m_acquire(plugin, msg_hdr, &c.m_tcp_recv_buffer))
                         {
                             c.m_tcp_recv_active_plugin = plugin;
-                            c.m_tcp_recv_expected      = c.m_tcp_recv_buffer.m_length;
+                            c.m_tcp_recv_payload_size  = c.m_tcp_recv_buffer.m_length;
                             c.m_tcp_recv_offset        = 0;
-                            read_state                 = READ_STATE_PARTS;
+                            read_state                 = READ_STATE_PAYLOAD;
                             break;
                         }
 
@@ -183,30 +181,21 @@ namespace ncore
                         return;
                     }
 
-                    if (read_state == READ_STATE_PARTS)
+                    if (read_state == READ_STATE_PAYLOAD)
                     {
-                        const u32 remaining = c.m_tcp_recv_expected - c.m_tcp_recv_offset;
+                        const u32 remaining = c.m_tcp_recv_payload_size - c.m_tcp_recv_offset;
                         const u32 avail     = (u32)c.m_config_sock_ops.m_available(c.m_socket);
-                        const u32 chunk     = remaining < avail ? remaining : avail;
+                        const u32 read_size = remaining < avail ? remaining : avail;
 
-                        c.m_config_sock_ops.m_read(c.m_socket, c.m_tcp_recv_buffer.m_buffer + c.m_tcp_recv_offset, chunk);
-                        c.m_tcp_recv_offset += chunk;
+                        c.m_config_sock_ops.m_read(c.m_socket, c.m_tcp_recv_buffer.m_buffer + c.m_tcp_recv_offset, read_size);
 
-                        if (c.m_tcp_recv_offset == c.m_tcp_recv_expected)
+                        c.m_tcp_recv_offset += read_size;
+                        if (c.m_tcp_recv_offset == c.m_tcp_recv_payload_size)
                         {
                             c.m_tcp_recv_active_plugin->m_commit(c.m_tcp_recv_active_plugin, msg_hdr, c.m_tcp_recv_buffer);
-                            if (c.m_tcp_recv_part == 0)
-                            {
-                                c.m_tcp_recv_part     = -1;
-                                c.m_tcp_recv_expected = 0;
-                                c.m_tcp_recv_offset   = 0;
-                                c.m_tcp_recv_buffer   = buffer_t{nullptr, 0};
-                            }
-                            else
-                            {
-                                // Then request another buffer for the next part
-                                c.m_tcp_recv_part = c.m_tcp_recv_active_plugin->m_acquire(c.m_tcp_recv_active_plugin, msg_hdr, c.m_tcp_recv_buffer);
-                            }
+                            c.m_tcp_recv_payload_size = 0;
+                            c.m_tcp_recv_offset       = 0;
+                            c.m_tcp_recv_buffer       = buffer_t{nullptr, 0};
                         }
                     }
                 }
@@ -257,7 +246,7 @@ namespace ncore
             }
 
             c.m_tcp_recv_active_plugin = nullptr;
-            c.m_tcp_recv_expected      = 0;
+            c.m_tcp_recv_payload_size  = 0;
             c.m_tcp_recv_offset        = 0;
             c.m_tcp_recv_buffer        = {nullptr, 0};
         }
@@ -316,7 +305,7 @@ namespace ncore
                 if (c.m_tcp_recv_active_plugin->m_abort != nullptr)
                     c.m_tcp_recv_active_plugin->m_abort(c.m_tcp_recv_active_plugin);
                 c.m_tcp_recv_active_plugin = nullptr;
-                c.m_tcp_recv_expected      = 0;
+                c.m_tcp_recv_payload_size  = 0;
                 c.m_tcp_recv_offset        = 0;
             }
 
