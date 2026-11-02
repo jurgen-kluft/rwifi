@@ -266,13 +266,16 @@ namespace ncore
             return c.m_tcp_recv_plugins[id];
         }
 
-        void unregister_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin)
+        tcp_recv_plugin_t* unregister_plugin(tcp_client_t& c, u8 id)
         {
-            if (id < 8 && c.m_tcp_recv_plugins[id] == plugin)
+            tcp_recv_plugin_t* plugin = nullptr;
+            if (id < 8 && c.m_tcp_recv_plugins[id] != nullptr)
             {
+                plugin                      = c.m_tcp_recv_plugins[id];
                 c.m_tcp_recv_plugins[id]    = nullptr;
                 c.m_tcp_recv_plugin_ctx[id] = nullptr;
             }
+            return plugin;
         }
 
         void register_on_connected_callback(tcp_client_t& c, tcp_user_on_connected_fn on_connected, void* user_context)

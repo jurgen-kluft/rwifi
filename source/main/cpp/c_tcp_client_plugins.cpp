@@ -185,8 +185,14 @@ namespace ncore
 
         void destroy_download_plugin(tcp_recv_plugin_t* plugin)
         {
-            nsystem::free(plugin->m_plugin_data);
-            nsystem::free(plugin);
+            if (plugin != nullptr)
+            {
+                if (plugin->m_plugin_data != nullptr)
+                {
+                    nsystem::free(plugin->m_plugin_data);
+                }
+                nsystem::free(plugin);
+            }
         }
 
         // 888b     d888 8888888888 .d8888b.   .d8888b.        d8888  .d8888b.  8888888888 .d8888b.
@@ -263,7 +269,7 @@ namespace ncore
 
         void destroy_messages_plugin(tcp_recv_plugin_t* plugin)
         {
-            if (plugin)
+            if (plugin != nullptr)
             {
                 if (plugin->m_plugin_data)
                 {

@@ -164,7 +164,7 @@ namespace ncore
         void               setup(tcp_client_t& c, const config_t* config, void* socket);
         void               register_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin);
         tcp_recv_plugin_t* get_plugin(tcp_client_t& c, u8 id);
-        void               unregister_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin);
+        tcp_recv_plugin_t* unregister_plugin(tcp_client_t& c, u8 id);
         void               register_on_connected_callback(tcp_client_t& c, tcp_user_on_connected_fn on_connected, void* user_context);
         void               register_on_disconnected_callback(tcp_client_t& c, tcp_user_on_disconnected_fn on_disconnected, void* user_context);
 
