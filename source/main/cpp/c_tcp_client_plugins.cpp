@@ -73,7 +73,7 @@ namespace ncore
             tcp_recv_user_acquire_fn  m_on_user_acquire;
             tcp_recv_user_complete_fn m_on_user_complete;
             tcp_recv_user_abort_fn    m_on_user_abort;
-            byte*                     m_target_buffer;       // PSRAM destination for the full downloaded data
+            buffer_t                  m_target_buffer;       // PSRAM destination for the full downloaded data
             u32                       m_target_buffer_size;  // Size of the PSRAM buffer
             u32                       m_received_blocks;     // Number of blocks received so far
             u32                       m_data_type;           // Remember data type
@@ -102,7 +102,7 @@ namespace ncore
             {
                 download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
                 ASSERT(in_hdr->PayloadSize == plugin_data->m_block_info.block_size);
-                out_buffer->m_buffer = plugin_data->m_target_buffer + plugin_data->m_block_info.file_offset;
+                out_buffer->m_buffer = plugin_data->m_target_buffer.m_buffer + plugin_data->m_block_info.file_offset;
                 out_buffer->m_length = in_hdr->PayloadSize;
                 return true;
             }
@@ -119,9 +119,12 @@ namespace ncore
                 // Extract download information from the received payload, which is our full download information.
                 // This tells us the full size of the download, and the number of blocks that will be needed to
                 // complete the download.
-                download_info_t* info             = (download_info_t*)buffer.m_buffer;
-                plugin_data->m_data_type          = info->data_type;
-                plugin_data->m_target_buffer_size = info->total_size;
+                download_info_t* info                 = (download_info_t*)buffer.m_buffer;
+                plugin_data->m_data_type              = info->data_type;
+                plugin_data->m_target_buffer_size     = info->total_size;
+                plugin_data->m_target_buffer.m_buffer = nullptr;
+                plugin_data->m_target_buffer.m_length = 0;
+
                 plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
             }
             else if (hdr->Type == MSG_TYPE_DOWNLOAD_BLOCK_INFO)
@@ -142,8 +145,8 @@ namespace ncore
                         plugin->m_on_user_complete(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
 
                         // The target buffer is now owned by the user and should be freed by them when done.
-                        plugin_data->m_target_buffer      = nullptr;
-                        plugin_data->m_target_buffer_size = 0;
+                        plugin_data->m_target_buffer.m_buffer = nullptr;
+                        plugin_data->m_target_buffer.m_length = 0;
                     }
                 }
             }
@@ -158,22 +161,23 @@ namespace ncore
                 plugin_data->m_on_user_abort(plugin_data->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer);
             }
 
-            plugin_data->m_target_buffer      = nullptr;
-            plugin_data->m_target_buffer_size = 0;
+            plugin_data->m_target_buffer.m_buffer = nullptr;
+            plugin_data->m_target_buffer.m_length = 0;
         }
 
         // There can only be one download plugin active at a time
 
         tcp_recv_plugin_t* new_download_plugin(tcp_recv_user_acquire_fn on_acquire, tcp_recv_user_complete_fn on_complete, tcp_recv_user_abort_fn on_abort, void* user_ctx)
         {
-            download_plugin_data_t* data = (download_plugin_data_t*)nsystem::calloc(sizeof(download_plugin_data_t));
-            data->m_user_ctx             = user_ctx;
-            data->m_on_user_acquire      = on_acquire;
-            data->m_on_user_complete     = on_complete;
-            data->m_on_user_abort        = on_abort;
-            data->m_target_buffer        = nullptr;  // Destination will be set when receiving the first block
-            data->m_target_buffer_size   = 0;
-            data->m_received_blocks      = 0;
+            download_plugin_data_t* data   = (download_plugin_data_t*)nsystem::calloc(sizeof(download_plugin_data_t));
+            data->m_user_ctx               = user_ctx;
+            data->m_on_user_acquire        = on_acquire;
+            data->m_on_user_complete       = on_complete;
+            data->m_on_user_abort          = on_abort;
+            data->m_target_buffer_size     = 0;
+            data->m_target_buffer.m_buffer = nullptr;  // Destination will be set when receiving the first block
+            data->m_target_buffer.m_length = 0;
+            data->m_received_blocks        = 0;
 
             tcp_recv_plugin_t* plugin = (tcp_recv_plugin_t*)nsystem::calloc(sizeof(tcp_recv_plugin_t));
             plugin->m_plugin_data     = data;
@@ -210,21 +214,22 @@ namespace ncore
             tcp_recv_user_acquire_fn  m_on_user_acquire;
             tcp_recv_user_complete_fn m_on_user_complete;
             tcp_recv_user_abort_fn    m_on_user_abort;
-            byte*                     m_target_buffer;       // Final destination for a message
+            buffer_t                  m_target_buffer;       // Final destination for a message
             u32                       m_target_buffer_size;  // Size of the PSRAM buffer
             u32                       m_data_type;           // Remember data type
         };
 
         bool message_acquire_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* in_hdr, buffer_t* out_buffer)
         {
-            message_plugin_data_t* plugin_data = (message_plugin_data_t*)plugin->m_plugin_data;
-            plugin_data->m_data_type           = in_hdr->Type;
-            plugin_data->m_target_buffer       = nullptr;
-            plugin_data->m_target_buffer_size  = in_hdr->PayloadSize;
+            message_plugin_data_t* plugin_data    = (message_plugin_data_t*)plugin->m_plugin_data;
+            plugin_data->m_data_type              = in_hdr->Type;
+            plugin_data->m_target_buffer_size     = in_hdr->PayloadSize;
+            plugin_data->m_target_buffer.m_buffer = nullptr;
+            plugin_data->m_target_buffer.m_length = 0;
 
             if (plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer))
             {
-                out_buffer->m_data      = plugin_data->m_target_buffer;
+                out_buffer->m_data      = plugin_data->m_target_buffer.m_buffer;
                 out_buffer->m_data_size = plugin_data->m_target_buffer_size;
 
                 return true;  // Handled download message}
@@ -237,8 +242,8 @@ namespace ncore
         {
             message_plugin_data_t* plugin_data = (message_plugin_data_t*)plugin->m_plugin_data;
             plugin_data->m_on_user_complete(plugin->m_user_ctx, plugin_data->m_data_type, buffer.m_data_size, buffer.m_data);
-            plugin_data->m_target_buffer      = nullptr;
-            plugin_data->m_target_buffer_size = 0;
+            plugin_data->m_target_buffer.m_buffer = nullptr;
+            plugin_data->m_target_buffer_size     = 0;
         }
 
         void message_abort_fn(tcp_recv_plugin_t* plugin)
@@ -248,8 +253,9 @@ namespace ncore
             {
                 plugin_data->m_on_user_abort(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
             }
-            plugin_data->m_target_buffer      = nullptr;
-            plugin_data->m_target_buffer_size = 0;
+            plugin_data->m_target_buffer_size     = 0;
+            plugin_data->m_target_buffer.m_buffer = nullptr;
+            plugin_data->m_target_buffer_size     = 0;
         }
 
         tcp_recv_plugin_t* new_messages_plugin(tcp_recv_user_acquire_fn on_acquire, tcp_recv_user_complete_fn on_complete, tcp_recv_user_abort_fn on_abort, void* user_ctx)
