@@ -85,7 +85,7 @@ namespace ncore
             {
                 download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
                 ASSERT(in_hdr->PayloadSize == sizeof(download_info_t));
-                out_buffer->m_buffer           = &plugin_data->m_download_info;
+                out_buffer->m_buffer           = (u8*)&plugin_data->m_download_info;
                 out_buffer->m_length           = sizeof(plugin_data->m_download_info);
                 plugin_data->m_received_blocks = 0;
                 return true;
@@ -94,7 +94,7 @@ namespace ncore
             {
                 download_plugin_data_t* plugin_data = (download_plugin_data_t*)plugin->m_plugin_data;
                 ASSERT(in_hdr->PayloadSize == sizeof(download_block_info_t));
-                out_buffer->m_buffer = &plugin_data->m_block_info;
+                out_buffer->m_buffer = (u8*)&plugin_data->m_block_info;
                 out_buffer->m_length = sizeof(plugin_data->m_block_info);
                 return true;
             }
@@ -125,7 +125,7 @@ namespace ncore
                 plugin_data->m_target_buffer.m_buffer = nullptr;
                 plugin_data->m_target_buffer.m_length = 0;
 
-                plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
+                plugin_data->m_on_user_acquire(plugin_data->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
             }
             else if (hdr->Type == MSG_TYPE_DOWNLOAD_BLOCK_INFO)
             {
@@ -140,9 +140,9 @@ namespace ncore
                 // Was this the last block? If so, call the on_complete callback
                 if (plugin_data->m_received_blocks == plugin_data->m_download_info.total_blocks)
                 {
-                    if (plugin->m_on_user_complete)
+                    if (plugin_data->m_on_user_complete)
                     {
-                        plugin->m_on_user_complete(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
+                        plugin_data->m_on_user_complete(plugin_data->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer);
 
                         // The target buffer is now owned by the user and should be freed by them when done.
                         plugin_data->m_target_buffer.m_buffer = nullptr;
@@ -227,11 +227,13 @@ namespace ncore
             plugin_data->m_target_buffer.m_buffer = nullptr;
             plugin_data->m_target_buffer.m_length = 0;
 
-            if (plugin_data->m_on_user_acquire(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer))
+            if (plugin_data->m_on_user_acquire(plugin_data->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer))
             {
-                out_buffer->m_data      = plugin_data->m_target_buffer.m_buffer;
-                out_buffer->m_data_size = plugin_data->m_target_buffer_size;
-
+                // We assume here that:
+                //      plugin_data->m_target_buffer.m_length >= plugin_data->m_target_buffer_size
+                //
+                out_buffer->m_buffer = plugin_data->m_target_buffer.m_buffer;
+                out_buffer->m_length = plugin_data->m_target_buffer_size;
                 return true;  // Handled download message}
             }
 
@@ -241,7 +243,7 @@ namespace ncore
         void message_commit_fn(tcp_recv_plugin_t* plugin, msg_hdr_t* hdr, buffer_t buffer)
         {
             message_plugin_data_t* plugin_data = (message_plugin_data_t*)plugin->m_plugin_data;
-            plugin_data->m_on_user_complete(plugin->m_user_ctx, plugin_data->m_data_type, buffer.m_data_size, buffer.m_data);
+            plugin_data->m_on_user_complete(plugin_data->m_user_ctx, plugin_data->m_data_type, buffer);
             plugin_data->m_target_buffer.m_buffer = nullptr;
             plugin_data->m_target_buffer_size     = 0;
         }
@@ -251,7 +253,7 @@ namespace ncore
             message_plugin_data_t* plugin_data = (message_plugin_data_t*)plugin->m_plugin_data;
             if (plugin_data->m_on_user_abort)
             {
-                plugin_data->m_on_user_abort(plugin->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer_size, plugin_data->m_target_buffer);
+                plugin_data->m_on_user_abort(plugin_data->m_user_ctx, plugin_data->m_data_type, plugin_data->m_target_buffer);
             }
             plugin_data->m_target_buffer_size     = 0;
             plugin_data->m_target_buffer.m_buffer = nullptr;

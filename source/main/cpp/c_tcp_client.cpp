@@ -467,36 +467,5 @@ namespace ncore
         }
 #endif
 
-        // // -------------------------------------------------------------------------------------------
-        // // -------------------------------------------------------------------------------------------
-        // // EXAMPLE
-        // // TCP receiving, framing state (zero-copy)
-
-        // static u8   g_tcp_recv_storage[2048];
-        // static bool g_tcp_recv_in_use = false;
-
-        // static u8* tcp_recv_acquire(void* ctx, u16 len)
-        // {
-        //     if (g_tcp_recv_in_use)
-        //         return 0;
-
-        //     if (len > sizeof(g_tcp_recv_storage))
-        //         return 0;
-
-        //     g_tcp_recv_in_use = true;
-        //     return g_tcp_recv_storage;
-        // }
-
-        // static void tcp_recv_commit(void* ctx, u8* buffer, u16 len)
-        // {
-        //     // process message here
-        //     g_tcp_recv_in_use = false;
-        // }
-
-        // static void tcp_recv_abort(void* ctx) { g_tcp_recv_in_use = false; }
-
-        // -------------------------------------------------------------------------------------------
-        // -------------------------------------------------------------------------------------------
-
     }  // namespace nnet
 }  // namespace ncore
