@@ -7,6 +7,7 @@
 
 #include "ccore/c_random.h"
 #include "rwifi/c_wifi_platform.h"
+#include "rwifi/c_wifi_mgr.h"
 
 namespace ncore
 {
@@ -32,6 +33,7 @@ namespace ncore
         void                 tick_wifi_manager_core(wifi_manager_core_t* manager);
 
         bool      is_wifi_manager_core_connected(const wifi_manager_core_t* manager);
+        wifi_link_state_t get_wifi_manager_core_link_state(const wifi_manager_core_t* manager);
         u8 const* get_wifi_manager_core_ip_address(wifi_manager_core_t* manager);
         u8 const* get_wifi_manager_core_mac_address(wifi_manager_core_t* manager);
         i32       get_wifi_manager_core_rssi(const wifi_manager_core_t* manager);

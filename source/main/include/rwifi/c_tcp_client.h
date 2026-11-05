@@ -102,9 +102,6 @@ namespace ncore
             timing->m_backoff_max_ms     = 5 * 60000;  // 5 minutes
         }
 
-        typedef void (*tcp_user_on_connected_fn)(void* ctx);
-        typedef void (*tcp_user_on_disconnected_fn)(void* ctx);
-
         // ------------------------------------------------------------
         // TCP client
         // ------------------------------------------------------------
@@ -127,12 +124,6 @@ namespace ncore
             tcp_socket_ops_t m_config_sock_ops;
             tcp_timing_t     m_config_timing;
 
-            // user
-            void*                       m_on_connected_user;
-            tcp_user_on_connected_fn    m_on_connected;
-            void*                       m_on_disconnected_user;
-            tcp_user_on_disconnected_fn m_on_disconnected;
-
             // runtime
             bool        m_enabled;
             tcp_state_t m_last_state;
@@ -142,6 +133,8 @@ namespace ncore
             u32         m_backoff_ms;
             u32         m_backoff_jitter_ms;
             u32         m_backoff_attempts;
+            bool        m_wifi_connected;
+            u32         m_wifi_connection_generation;
 
             // scheduled send
             byte m_scheduled_send_buffer[1024];
@@ -165,12 +158,10 @@ namespace ncore
         void               register_plugin(tcp_client_t& c, u8 id, tcp_recv_plugin_t* plugin);
         tcp_recv_plugin_t* get_plugin(tcp_client_t& c, u8 id);
         tcp_recv_plugin_t* unregister_plugin(tcp_client_t& c, u8 id);
-        void               register_on_connected_callback(tcp_client_t& c, tcp_user_on_connected_fn on_connected, void* user_context);
-        void               register_on_disconnected_callback(tcp_client_t& c, tcp_user_on_disconnected_fn on_disconnected, void* user_context);
 
         void connect(tcp_client_t& c, u32 ip, u16 port);
         void disconnect(tcp_client_t& c);
-        bool tick_tcp_client(wifi_manager_t* wifi_mgr, tcp_client_t& c);
+        bool tick_tcp_client(const wifi_link_state_t& wifi_link, tcp_client_t& c);
         bool send(tcp_client_t& c, const void* data, u32 len);
         bool send_later(tcp_client_t& c, const void* data, u32 len);
 

@@ -6,7 +6,6 @@
 
 #include "ccore/c_memory.h"
 
-#include "rwifi/c_wifi.h"
 #include "rwifi/c_tcp_client.h"
 
 #ifdef TARGET_ARDUINO

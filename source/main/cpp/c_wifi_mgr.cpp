@@ -4,7 +4,6 @@
 #include "rcore/c_log.h"
 
 #include "rwifi/c_wifi_mgr.h"
-#include "rwifi/c_wifi.h"
 
 #ifdef TARGET_ARDUINO
 
@@ -405,7 +404,7 @@ namespace ncore
 
 #    endif
 
-#    ifdef TARGET_ESP8266
+#    if defined(TARGET_ESP8266) && 0
 
 #        include <ESP8266WiFi.h>
 

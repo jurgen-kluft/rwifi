@@ -24,6 +24,7 @@ namespace ncore
             bool                  m_has_cached_mac;
             bool                  m_connect_requested;
             bool                  m_use_fast_connect;
+            u32                   m_connection_generation;
         };
 
         static bool is_cache_valid(wifi_cache_t* cache)
@@ -92,6 +93,7 @@ namespace ncore
                 update_link_info(manager);
                 manager->m_backoff_ms = manager->m_config.init_backoff_ms;
                 manager->m_state      = WIFI_STATE_CONNECTED;
+                manager->m_connection_generation++;
             }
             else if (event->m_type == WIFI_EVENT_DISCONNECTED && manager->m_state != WIFI_STATE_INACTIVE && manager->m_state != WIFI_STATE_BACKOFF)
             {
@@ -128,6 +130,7 @@ namespace ncore
             manager->m_has_cached_mac     = false;
             manager->m_connect_requested  = false;
             manager->m_use_fast_connect   = false;
+            manager->m_connection_generation = 0;
             g_memzero(&manager->m_cache, sizeof(manager->m_cache));
             g_memzero(manager->m_ip_address, sizeof(manager->m_ip_address));
             g_memzero(manager->m_mac_address, sizeof(manager->m_mac_address));
@@ -241,6 +244,14 @@ namespace ncore
         bool is_wifi_manager_core_connected(const wifi_manager_core_t* manager)
         {
             return manager && manager->m_state == WIFI_STATE_CONNECTED;
+        }
+
+        wifi_link_state_t get_wifi_manager_core_link_state(const wifi_manager_core_t* manager)
+        {
+            if (manager == nullptr)
+                return {false, 0};
+
+            return {manager->m_state == WIFI_STATE_CONNECTED, manager->m_connection_generation};
         }
 
         u8 const* get_wifi_manager_core_ip_address(wifi_manager_core_t* manager)

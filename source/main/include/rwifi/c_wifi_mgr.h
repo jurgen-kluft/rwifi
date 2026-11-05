@@ -18,6 +18,12 @@ namespace ncore
             WIFI_STATE_CONNECTED    = 3
         };
 
+        struct wifi_link_state_t
+        {
+            bool m_connected;
+            u32  m_connection_generation;
+        };
+
         struct wifi_cache_t
         {
             u32  ip_address;
@@ -26,6 +32,7 @@ namespace ncore
             u32  ip_dns1;
             u32  ip_dns2;
             u8   wifi_bssid[6];
+            u16  reserved;
             i32  wifi_channel;
             u32  m_crc;
             void reset()
@@ -49,11 +56,12 @@ namespace ncore
         void            deactivate(wifi_manager_t* m);
         void            tick(wifi_manager_t* m);
 
-        bool      is_connected(const wifi_manager_t* m);
-        u8 const* get_ip_address(wifi_manager_t* m);
-        u8 const* get_mac_address(wifi_manager_t* m);
-        i32       get_rssi(wifi_manager_t* m);
-        void      print_info(wifi_manager_t* m);
+        bool              is_connected(const wifi_manager_t* m);
+        wifi_link_state_t get_link_state(const wifi_manager_t* m);
+        u8 const*         get_ip_address(wifi_manager_t* m);
+        u8 const*         get_mac_address(wifi_manager_t* m);
+        i32               get_rssi(wifi_manager_t* m);
+        void              print_info(wifi_manager_t* m);
 
     }  // namespace nnet
 }  // namespace ncore

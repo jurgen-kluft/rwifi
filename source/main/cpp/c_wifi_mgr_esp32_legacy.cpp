@@ -71,6 +71,11 @@ namespace ncore
             return manager && is_wifi_manager_core_connected(manager->m_core);
         }
 
+        wifi_link_state_t get_link_state(const wifi_manager_t* manager)
+        {
+            return manager ? get_wifi_manager_core_link_state(manager->m_core) : wifi_link_state_t{false, 0};
+        }
+
         u8 const* get_ip_address(wifi_manager_t* manager)
         {
             return manager ? get_wifi_manager_core_ip_address(manager->m_core) : nullptr;

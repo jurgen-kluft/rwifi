@@ -1,8 +1,3 @@
-#ifdef TARGET_ARDUINO
-
-#    include "Arduino.h"
-#    include "WiFi.h"
-
 #    include "rcore/c_app.h"
 #    include "rcore/c_network.h"
 #    include "rcore/c_eeprom.h"
@@ -11,8 +6,6 @@
 #    include "rcore/c_str.h"
 #    include "rcore/c_timer.h"
 
-#    include "rwifi/c_tcp.h"
-#    include "rwifi/c_udp.h"
 #    include "rwifi/c_wifi_mgr.h"
 #    include "rwifi/c_tcp_client.h"
 
@@ -23,6 +16,8 @@ namespace ncore
         // ------------------------------------------------------------
         // Static helpers
         // ------------------------------------------------------------
+
+        static void s_abort(tcp_client_t& c);
 
         static void s_enter_backoff(tcp_client_t& c)
         {
@@ -47,6 +42,38 @@ namespace ncore
             }
 
             c.m_last_attempt_ms = c.m_config_time_ops.m_millis();
+        }
+
+        static void s_stop_for_wifi_change(tcp_client_t& c)
+        {
+            s_abort(c);
+
+            c.m_config_sock_ops.m_stop(c.m_socket);
+            c.m_last_state = c.m_state;
+            c.m_state      = TCP_STATE_DISCONNECTED;
+        }
+
+        static bool s_update_wifi_link(tcp_client_t& c, const wifi_link_state_t& wifi_link)
+        {
+            if (!wifi_link.m_connected)
+            {
+                if (c.m_wifi_connected)
+                    s_stop_for_wifi_change(c);
+
+                c.m_wifi_connected = false;
+                return false;
+            }
+
+            const bool link_changed = !c.m_wifi_connected || c.m_wifi_connection_generation != wifi_link.m_connection_generation;
+            c.m_wifi_connected            = true;
+            c.m_wifi_connection_generation = wifi_link.m_connection_generation;
+            if (!link_changed)
+                return true;
+
+            s_stop_for_wifi_change(c);
+            c.m_backoff_ms      = c.m_config_timing.m_backoff_initial_ms;
+            c.m_last_attempt_ms = c.m_config_time_ops.m_millis() - c.m_backoff_ms;
+            return true;
         }
 
         static void s_attempt_connect(tcp_client_t& c)
@@ -75,9 +102,6 @@ namespace ncore
                 c.m_tcp_recv_offset       = 0;
                 c.m_tcp_recv_buffer       = {0, 0};
 
-                if (c.m_last_state == TCP_STATE_CONNECTING && c.m_on_connected != nullptr)
-                    c.m_on_connected(c.m_on_connected_user);
-
                 return;
             }
 
@@ -93,8 +117,7 @@ namespace ncore
             if ((c.m_config_time_ops.m_millis() - c.m_last_attempt_ms) >= c.m_backoff_ms)
             {
                 c.m_last_state = c.m_state;
-                if (c.m_backoff_attempts)
-                    c.m_state = TCP_STATE_DISCONNECTED;
+                c.m_state = TCP_STATE_DISCONNECTED;
             }
         }
 
@@ -133,10 +156,6 @@ namespace ncore
             if (!c.m_config_sock_ops.m_connected(c.m_socket))
             {
                 s_abort(c);
-
-                // Notify the user of disconnection if we were previously connected
-                if (c.m_on_disconnected)
-                    c.m_on_disconnected(c.m_on_disconnected_user);
 
                 c.m_config_sock_ops.m_stop(c.m_socket);
                 s_enter_backoff(c);
@@ -227,10 +246,6 @@ namespace ncore
             c.m_config_sock_ops = config->m_sock_ops;
             c.m_config_timing   = config->m_timing;
 
-            c.m_on_connected_user    = nullptr;
-            c.m_on_connected         = nullptr;
-            c.m_on_disconnected_user = nullptr;
-            c.m_on_disconnected      = nullptr;
 
             c.m_enabled          = false;
             c.m_last_state       = TCP_STATE_INACTIVE;
@@ -238,6 +253,10 @@ namespace ncore
             c.m_last_attempt_ms  = 0;
             c.m_connect_start_ms = 0;
             c.m_backoff_ms       = config->m_timing.m_backoff_initial_ms;
+            c.m_backoff_jitter_ms = 0;
+            c.m_backoff_attempts  = 0;
+            c.m_wifi_connected   = false;
+            c.m_wifi_connection_generation = 0;
 
             for (u32 i = 0; i < 8; ++i)
             {
@@ -278,18 +297,6 @@ namespace ncore
             return plugin;
         }
 
-        void register_on_connected_callback(tcp_client_t& c, tcp_user_on_connected_fn on_connected, void* user_context)
-        {
-            c.m_on_connected_user = user_context;
-            c.m_on_connected      = on_connected;
-        }
-
-        void register_on_disconnected_callback(tcp_client_t& c, tcp_user_on_disconnected_fn on_disconnected, void* user_context)
-        {
-            c.m_on_disconnected_user = user_context;
-            c.m_on_disconnected      = on_disconnected;
-        }
-
         static void activate(tcp_client_t& c)
         {
             if (!c.m_enabled || c.m_state != TCP_STATE_INACTIVE)
@@ -316,9 +323,6 @@ namespace ncore
 
             if (c.m_state == TCP_STATE_CONNECTED)
             {
-                if (c.m_on_disconnected)
-                    c.m_on_disconnected(c.m_on_disconnected_user);
-
                 c.m_config_sock_ops.m_stop(c.m_socket);
             }
 
@@ -348,9 +352,12 @@ namespace ncore
         }
 
         // returns true if the client is connected, false otherwise
-        bool tick_tcp_client(nnet::wifi_manager_t* wifi_mgr, tcp_client_t& tcp)
+        bool tick_tcp_client(const wifi_link_state_t& wifi_link, tcp_client_t& tcp)
         {
             if (!tcp.m_enabled)
+                return false;
+
+            if (!s_update_wifi_link(tcp, wifi_link))
                 return false;
 
             switch (tcp.m_state)
@@ -384,88 +391,3 @@ namespace ncore
     }  // namespace nnet
 }  // namespace ncore
 
-#endif
-
-namespace ncore
-{
-    namespace nnet
-    {
-#ifdef TARGET_ARDUINO
-        static u32 millis_cb() { return (u32)::millis(); }
-
-        void setup(time_ops_t* ops) { ops->m_millis = millis_cb; }
-
-        static bool wifi_connect(void* socket, u32 ip, u16 port)
-        {
-            IPAddress   ip_addr(ip);
-            WiFiClient* wc = (WiFiClient*)socket;
-            return wc->connect(ip_addr, port);
-        }
-
-        static bool wifi_connected(void* socket)
-        {
-            WiFiClient* wc = (WiFiClient*)socket;
-            return wc->connected();
-        }
-
-        static int wifi_available(void* socket)
-        {
-            WiFiClient* wc = (WiFiClient*)socket;
-            return wc->available();
-        }
-
-        static int wifi_read(void* socket, void* dst, u32 len)
-        {
-            WiFiClient* wc = (WiFiClient*)socket;
-            return wc->read((u8*)dst, len);
-        }
-
-        static int wifi_write(void* socket, const void* src, u32 len)
-        {
-            WiFiClient* wc = (WiFiClient*)socket;
-            return wc->write((const u8*)src, len);
-        }
-
-        static void wifi_stop(void* sock)
-        {
-            WiFiClient* wc = (WiFiClient*)sock;
-            wc->stop();
-        }
-
-        void* setup(tcp_socket_ops_t* ops)
-        {
-            ops->m_connect   = wifi_connect;
-            ops->m_connected = wifi_connected;
-            ops->m_available = wifi_available;
-            ops->m_read      = wifi_read;
-            ops->m_write     = wifi_write;
-            ops->m_stop      = wifi_stop;
-            return new WiFiClient();
-        }
-#else
-
-        static u32 millis_cb() { return 0; }
-        void       setup(time_ops_t* ops) { ops->m_millis = millis_cb; }
-
-        static bool wifi_connect(void* socket, const char* host, u16 port) { return false; }
-        static bool wifi_connected(void* socket) { return false; }
-        static int  wifi_available(void* socket) { return 0; }
-        static int  wifi_read(void* socket, void* dst, u32 len) { return 0; }
-        static int  wifi_write(void* socket, const void* src, u32 len) { return 0; }
-        static void wifi_stop(void* sock) {}
-
-        void* setup(tcp_socket_ops_t* ops)
-        {
-            ops->m_connect   = wifi_connect;
-            ops->m_connected = wifi_connected;
-            ops->m_available = wifi_available;
-            ops->m_read      = wifi_read;
-            ops->m_write     = wifi_write;
-            ops->m_stop      = wifi_stop;
-
-            return nullptr;
-        }
-#endif
-
-    }  // namespace nnet
-}  // namespace ncore

@@ -27,3 +27,29 @@ The user must call tick() in the main loop to allow the TCP client to process in
 
 The TCP client provides two functions to send data to the server: send() and send_later(). The send() function will send the data immediately, while the send_later() function will schedule the data to be sent at a later time. The user can call tick() to allow the TCP client to process the scheduled data and send it to the server.
 
+## Wi-Fi Disconnect Recovery
+
+The Wi-Fi manager publishes a `wifi_link_state_t` snapshot through `get_link_state()`. It contains `m_connected` and a monotonically increasing `m_connection_generation`, which advances every time Wi-Fi obtains an IP address. Pass the snapshot to every TCP and UDP client tick:
+
+```cpp
+const nnet::wifi_link_state_t wifi_link = nnet::get_link_state(wifi_manager);
+nnet::tick_tcp_client(wifi_link, tcp_client);
+nnet::tick_udp_client(wifi_link, udp_client);
+```
+
+### TCP
+
+Keep calling `tick_tcp_client(wifi_link, tcp_client)` while the TCP client is enabled. When `m_connected` becomes false, the client aborts any partial receive, stops its socket, and waits without attempting a new connection. When Wi-Fi reconnects with a new `m_connection_generation`, the client resets stale socket state and reconnects to its configured endpoint. Existing plugins and callbacks remain registered. `send()` returns `false` until the TCP client reaches the connected state again. Call `disconnect()` only when the application wants to disable the TCP client permanently.
+
+### UDP
+
+Call `bind(udp_client, udp_port)` once to enable the client, then keep calling `tick_udp_client(wifi_link, udp_client)`. When `m_connected` becomes false, the client stops its `WiFiUDP` socket and clears its bound state. When Wi-Fi reconnects with a new `m_connection_generation`, it automatically binds the configured port again before receiving or sending. `send_to()` returns `false` while the UDP client is unbound. Call `unbind()` only when the application wants to disable UDP permanently.
+
+## UDP Client
+
+The UDP client uses the Wi-Fi link snapshot passed to `tick_udp_client()` to manage the lifetime of its socket. Use `send_to()` to send a datagram to any IPv4 address and port. `get_remote_endpoint()` returns the sender of the most recently received datagram, which can be used to reply.
+
+UDP datagrams use the existing `msg_hdr_t` protocol. A datagram must contain exactly one complete message: the header magic must match `cMSG_MAGIC`, and `PayloadSize` must match the remaining datagram bytes. The UDP client can register the existing TCP receive plugins. It reads the header first, lets a plugin acquire its destination buffer, then reads the payload directly into that buffer before calling the plugin commit callback.
+
+UDP is best effort. It does not provide ordering, acknowledgement, retries, duplicate detection, or cross-datagram reassembly. Plugins that process independent messages can be used directly; multi-datagram downloads need an application-level reliability protocol.
+
